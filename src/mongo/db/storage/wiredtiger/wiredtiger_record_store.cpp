@@ -713,7 +713,7 @@ StatusWith<std::string> WiredTigerRecordStore::generateCreateString(
     // Separate out a prefix and suffix in the default string. User configuration will
     // override values in the prefix, but not values in the suffix.
     str::stream ss;
-    ss << "type=file,";
+    ss << "type=lsm,";
     // Setting this larger than 10m can hurt latencies and throughput degradation if this
     // is the oplog.  See SERVER-16247
     ss << "memory_page_max=10m,";

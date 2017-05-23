@@ -9,6 +9,7 @@ env.SConscript(
         'ephemeral_for_test',
         'kv',
         'mmap_v1',
+        's3wt',
         'wiredtiger',
     ],
     exports=[
