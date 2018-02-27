@@ -42,6 +42,8 @@
 #include "mongo/util/hex.h"
 #include "mongo/util/log.h"
 
+#include "mongo/db/repl/replication_coordinator.h"
+
 namespace mongo {
 namespace {
 // SnapshotIds need to be globally unique, as they are used in a WorkingSetMember to
@@ -208,6 +210,9 @@ void WiredTigerRecoveryUnit::_txnClose(bool commit) {
             _isTimestamped = true;
         }
 
+        invariant(!_mustBeTimestamped || _isTimestamped);
+        invariant(!_mustNotBeTimestamped || !_isTimestamped);
+
         wtRet = s->commit_transaction(s, NULL);
         LOG(3) << "WT commit_transaction for snapshot id " << _mySnapshotId;
     } else {
@@ -225,6 +230,8 @@ void WiredTigerRecoveryUnit::_txnClose(bool commit) {
     _active = false;
     _mySnapshotId = nextSnapshotId.fetchAndAdd(1);
     _isOplogReader = false;
+    _mustBeTimestamped = false;
+    _mustNotBeTimestamped = false;
 }
 
 SnapshotId WiredTigerRecoveryUnit::getSnapshotId() const {
@@ -242,6 +249,41 @@ Status WiredTigerRecoveryUnit::setReadFromMajorityCommittedSnapshot() {
     _majorityCommittedSnapshot = *snapshotName;
     _readFromMajorityCommittedSnapshot = true;
     return Status::OK();
+}
+
+void WiredTigerRecoveryUnit::mustBeTimestamped(OperationContext* opCtx, NamespaceString nss) {
+    /*
+            auto replCoord = repl::ReplicationCoordinator::get(opCtx);
+            if (!replCoord) {
+                return;
+            }
+
+            if (!replCoord->isReplEnabled()) {
+                return;
+            }
+
+            auto memberState = replCoord->getMemberState();
+            if (!memberState.primary() && !memberState.secondary()) {
+                return;
+            }
+
+            if (ns.ns() == "admin.system.version") {
+                return false;
+            }
+
+        if (nss.isReplicated() && !nss.coll().startsWith("tmp.mr")) {
+            // if ((nss.isReplicated() || nss.ns() == "local.replset.checkpointTimestamp") &&
+            //        !nss.coll().startsWith("tmp.mr")) {
+            _mustBeTimestamped = true;
+            LOG(0) << "Collection must be timestamped. " << nss;
+        } else if (!nss.isReplicated()) {
+            _mustNotBeTimestamped = true;
+            LOG(0) << "Collection must not be timestamped. " << nss;
+        } else {
+            LOG(0) << "Collection is `tmp.mr`: " << nss;
+            invariant(nss.coll().startsWith("tmp.mr"));
+        }
+        */
 }
 
 boost::optional<Timestamp> WiredTigerRecoveryUnit::getMajorityCommittedSnapshot() const {

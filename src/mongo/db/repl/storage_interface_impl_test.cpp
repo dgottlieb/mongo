@@ -2492,4 +2492,62 @@ TEST_F(StorageInterfaceImplTest, SetIndexIsMultikeySucceeds) {
            indexCatalog->getMultikeyPaths(opCtx, indexCatalog->findIndexByName(opCtx, indexName)));
 }
 
+TEST_F(StorageInterfaceImplTest, SetIndexIsMultikeyReturnsNamespaceNotFoundForMissingDatabase) {
+    auto opCtx = getOperationContext();
+    StorageInterfaceImpl storage;
+    auto nss = makeNamespace(_agent);
+    ASSERT_EQUALS(ErrorCodes::NamespaceNotFound,
+                  storage.setIndexIsMultikey(opCtx, nss, "foo", {}, Timestamp(3, 3)));
+}
+
+TEST_F(StorageInterfaceImplTest, SetIndexIsMultikeyReturnsNamespaceNotFoundForMissingCollection) {
+    auto opCtx = getOperationContext();
+    StorageInterfaceImpl storage;
+    auto nss = makeNamespace(_agent);
+    NamespaceString wrongColl(nss.db(), "wrongColl"_sd);
+    ASSERT_OK(storage.createCollection(opCtx, nss, CollectionOptions()));
+    ASSERT_EQUALS(ErrorCodes::NamespaceNotFound,
+                  storage.setIndexIsMultikey(opCtx, wrongColl, "foo", {}, Timestamp(3, 3)));
+}
+
+TEST_F(StorageInterfaceImplTest, SetIndexIsMultikeyReturnsIndexNotFoundForMissingIndex) {
+    auto opCtx = getOperationContext();
+    StorageInterfaceImpl storage;
+    auto nss = makeNamespace(_agent);
+    ASSERT_OK(storage.createCollection(opCtx, nss, CollectionOptions()));
+    ASSERT_EQUALS(ErrorCodes::IndexNotFound,
+                  storage.setIndexIsMultikey(opCtx, nss, "foo", {}, Timestamp(3, 3)));
+}
+
+TEST_F(StorageInterfaceImplTest, SetIndexIsMultikeyReturnsInvalidOptionsForNullTimestamp) {
+    auto opCtx = getOperationContext();
+    StorageInterfaceImpl storage;
+    auto nss = makeNamespace(_agent);
+    ASSERT_OK(storage.createCollection(opCtx, nss, CollectionOptions()));
+    ASSERT_EQUALS(ErrorCodes::InvalidOptions,
+                  storage.setIndexIsMultikey(opCtx, nss, "foo", {}, Timestamp()));
+}
+
+TEST_F(StorageInterfaceImplTest, SetIndexIsMultikeySucceeds) {
+    auto opCtx = getOperationContext();
+    StorageInterfaceImpl storage;
+    auto nss = makeNamespace(_agent);
+    ASSERT_OK(storage.createCollection(opCtx, nss, CollectionOptions()));
+
+    auto indexName = "a_b_1";
+    auto indexSpec =
+        BSON("name" << indexName << "ns" << nss.ns() << "key" << BSON("a.b" << 1) << "v"
+                    << static_cast<int>(kIndexVersion));
+    ASSERT_EQUALS(createIndexForColl(opCtx, nss, indexSpec), 2);
+
+    MultikeyPaths paths = {{1}};
+    ASSERT_OK(storage.setIndexIsMultikey(opCtx, nss, indexName, paths, Timestamp(3, 3)));
+    AutoGetCollectionForReadCommand autoColl(opCtx, nss);
+    ASSERT_TRUE(autoColl.getCollection());
+    auto indexCatalog = autoColl.getCollection()->getIndexCatalog();
+    ASSERT(indexCatalog->isMultikey(opCtx, indexCatalog->findIndexByName(opCtx, indexName)));
+    ASSERT(paths ==
+           indexCatalog->getMultikeyPaths(opCtx, indexCatalog->findIndexByName(opCtx, indexName)));
+}
+
 }  // namespace

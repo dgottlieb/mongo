@@ -66,12 +66,6 @@ WiredTigerSizeStorer::WiredTigerSizeStorer(WT_CONNECTION* conn,
                              ->getTableCreateConfig(storageUri);
     if (!readOnly) {
         invariantWTOK(session->create(session, storageUri.c_str(), config.c_str()));
-        const bool keepOldLoggingSettings = true;
-        if (keepOldLoggingSettings) {
-            logSizeStorerTable = true;
-        }
-        uassertStatusOK(
-            WiredTigerUtil::setTableLogging(session, storageUri.c_str(), logSizeStorerTable));
     }
 
     invariantWTOK(
@@ -102,6 +96,7 @@ void WiredTigerSizeStorer::onCreate(WiredTigerRecordStore* rs,
     stdx::lock_guard<stdx::mutex> lk(_entriesMutex);
     Entry& entry = _entries[rs->getURI()];
     entry.rs = rs;
+    // log() << "SS. OnCreate. Rs: " << rs->ns() << " NumRecords: " << numRecords;
     entry.numRecords = numRecords;
     entry.dataSize = dataSize;
     entry.dirty = true;
@@ -111,6 +106,7 @@ void WiredTigerSizeStorer::onDestroy(WiredTigerRecordStore* rs) {
     _checkMagic();
     stdx::lock_guard<stdx::mutex> lk(_entriesMutex);
     Entry& entry = _entries[rs->getURI()];
+    // log() << "SS. OnDestroy. Rs: " << rs->ns() << " NumRecords: " << rs->numRecords(NULL);
     entry.numRecords = rs->numRecords(NULL);
     entry.dataSize = rs->dataSize(NULL);
     entry.dirty = true;
@@ -246,4 +242,4 @@ void WiredTigerSizeStorer::syncCache(bool syncToDisk) {
         }
     }
 }
-}
+}  // namespace mongo

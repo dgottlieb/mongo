@@ -147,6 +147,7 @@ bool KVCollectionCatalogEntry::setIndexIsMultikey(OperationContext* opCtx,
         }
     }
 
+    // opCtx->recoveryUnit()->mustBeTimestamped(opCtx, ns());
     _catalog->putMetaData(opCtx, ns().toString(), md);
     return true;
 }

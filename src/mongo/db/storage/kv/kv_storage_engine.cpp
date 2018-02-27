@@ -32,8 +32,10 @@
 
 #include <algorithm>
 
+#include "mongo/db/catalog/catalog_control.h"
 #include "mongo/db/logical_clock.h"
 #include "mongo/db/operation_context_noop.h"
+#include "mongo/db/storage/kv/kv_catalog_feature_tracker.h"
 #include "mongo/db/storage/kv/kv_database_catalog_entry.h"
 #include "mongo/db/storage/kv/kv_engine.h"
 #include "mongo/util/assert_util.h"
@@ -111,6 +113,18 @@ void KVStorageEngine::loadCatalog(OperationContext* opCtx) {
 
     _catalogRecordStore = _engine->getGroupedRecordStore(
         opCtx, catalogInfo, catalogInfo, CollectionOptions(), KVPrefix::kNotPrefixed);
+    auto catalogRs = _catalogRecordStore.get();
+    {
+        auto cursor = catalogRs->getCursor(opCtx);
+        boost::optional<Record> rec = cursor->next();
+        while (rec) {
+            log() << "loadCatalog. Catalog record. Id: " << rec->id
+                  << " Value: " << rec->data.toBson();
+            rec = cursor->next();
+        }
+        opCtx->recoveryUnit()->abandonSnapshot();
+    }
+
     _catalog.reset(new KVCatalog(
         _catalogRecordStore.get(), _options.directoryPerDB, _options.directoryForIndexes));
     _catalog->init(opCtx);
@@ -130,7 +144,16 @@ void KVStorageEngine::loadCatalog(OperationContext* opCtx) {
             db = _databaseCatalogEntryFactory(dbName, this).release();
         }
 
-        db->initCollection(opCtx, coll, _options.forRepair);
+        try {
+            db->initCollection(opCtx, coll, _options.forRepair);
+        } catch (const int& x) {
+            log() << "Threw. X: " << x << " Dropping collection without table. Coll: " << coll;
+            WriteUnitOfWork wuow(opCtx);
+            invariant(_catalog->dropCollection(opCtx, coll).isOK());
+            wuow.commit();
+            continue;
+        }
+
         auto maxPrefixForCollection = _catalog->getMetaData(opCtx, coll).getMaxPrefix();
         maxSeenPrefix = std::max(maxSeenPrefix, maxPrefixForCollection);
     }
@@ -141,6 +164,18 @@ void KVStorageEngine::loadCatalog(OperationContext* opCtx) {
 
 void KVStorageEngine::closeCatalog(OperationContext* opCtx) {
     dassert(opCtx->lockState()->isLocked());
+    auto catalogRs = _catalog->_rs;
+    {
+        WriteUnitOfWork wuow(opCtx);
+        auto cursor = catalogRs->getCursor(opCtx);
+        boost::optional<Record> rec = cursor->next();
+        while (rec) {
+            log() << "closeCatalog. Catalog record. Id: " << rec->id
+                  << " Value: " << rec->data.toBson();
+            rec = cursor->next();
+        }
+    }
+
     stdx::lock_guard<stdx::mutex> lock(_dbsLock);
     for (auto entry : _dbs) {
         delete entry.second;
@@ -184,7 +219,7 @@ KVStorageEngine::reconcileCatalogAndIdents(OperationContext* opCtx) {
         engineIdents.insert(vec.begin(), vec.end());
         engineIdents.erase(catalogInfo);
     }
-
+    log() << "Reconciling";
     std::set<std::string> catalogIdents;
     {
         std::vector<std::string> vec = _catalog->getAllIdents(opCtx);
@@ -281,7 +316,7 @@ KVStorageEngine::reconcileCatalogAndIdents(OperationContext* opCtx) {
         }
 
         for (auto&& indexName : indexesToDrop) {
-            dassert(metaData.eraseIndex(indexName));
+            invariant(metaData.eraseIndex(indexName));
         }
         if (indexesToDrop.size() > 0) {
             WriteUnitOfWork wuow(opCtx);
@@ -436,10 +471,12 @@ Status KVStorageEngine::_dropCollectionsNoTimestamp(OperationContext* opCtx,
         // as a special collection. For example, dropping a database will skip over
         // `system.indexes` and it will never be renamed to the drop pending namespace.
         if (_initialDataTimestamp != Timestamp::kAllowUnstableCheckpointsSentinel) {
-            invariant(!nss.isReplicated() || nss.coll().startsWith("tmp.mr") ||
-                          nss.isSystemDotIndexes(),
-                      str::stream() << "Collection drop is not being timestamped. Namespace: "
-                                    << nss.ns());
+            // Recovery replaying a `dropDatabase` can safely drop all collections.
+            //
+            // invariant(!nss.isReplicated() || nss.coll().startsWith("tmp.mr") ||
+            //               nss.isSystemDotIndexes(),
+            //           str::stream() << "Collection drop is not being timestamped. Namespace: "
+            //                         << nss.ns());
         }
 
         Status result = dbce->dropCollection(opCtx, coll);
@@ -457,28 +494,17 @@ Status KVStorageEngine::_dropCollectionsWithTimestamp(OperationContext* opCtx,
                                                       std::list<std::string>& toDrop,
                                                       CollIter begin,
                                                       CollIter end) {
-    // On primaries, these collection drops are performed in a separate WUOW than the insertion of
-    // the `dropDatabase` oplog entry. In this case, we expect the `existingCommitTs` to be null
-    // and the code looks at the logical clock to assign a timestamp to the writes.
-    //
-    // Secondaries reach this from within a `TimestampBlock` where there should be a non-null
-    // `existingCommitTs`.
+
     const Timestamp existingCommitTs = opCtx->recoveryUnit()->getCommitTimestamp();
-
-    // `LogicalClock`s on standalones and master/slave do not necessarily return real
-    // optimes. Assume it's safe to not timestamp the write.
-    const Timestamp chosenCommitTs = LogicalClock::get(opCtx)->getClusterTime().asTimestamp();
-    const bool setCommitTs = existingCommitTs.isNull() && !chosenCommitTs.isNull();
-    if (setCommitTs) {
-        opCtx->recoveryUnit()->setCommitTimestamp(chosenCommitTs);
+    if (!existingCommitTs.isNull()) {
+        opCtx->recoveryUnit()->clearCommitTimestamp();
     }
-
-    // Ensure the method exits with the same "commit timestamp" state that it was called with.
-    auto removeCommitTimestamp = MakeGuard([&opCtx, setCommitTs] {
-        if (setCommitTs) {
-            opCtx->recoveryUnit()->clearCommitTimestamp();
+    auto reinstateCommitTimestamp = MakeGuard([&opCtx, existingCommitTs] {
+        if (!existingCommitTs.isNull()) {
+            opCtx->recoveryUnit()->setCommitTimestamp(existingCommitTs);
         }
     });
+
 
     // This is called outside of a WUOW since MMAPv1 has unfortunate behavior around dropping
     // databases. We need to create one here since we want db dropping to all-or-nothing
@@ -575,8 +601,44 @@ bool KVStorageEngine::supportsRecoverToStableTimestamp() const {
     return _engine->supportsRecoverToStableTimestamp();
 }
 
-Status KVStorageEngine::recoverToStableTimestamp() {
-    return _engine->recoverToStableTimestamp();
+StatusWith<Timestamp> KVStorageEngine::recoverToStableTimestamp(OperationContext* opCtx) {
+    log() << "Call to recoverToStableTimestamp";
+    invariant(opCtx->lockState()->isW());
+
+    // When recovering to the stable timestamp, the feature tracking document will also be
+    // reverted. However, some tables won't be rolled back, e.g: user collections on the `local`
+    // database. Currently, it's not possible to know where a feature is being used and therefore
+    // not safe to roll back the feature tracking document. It's worth noting traditional rollback
+    // never updates the feature tracking document.
+    //
+    // Make a best effort to maintain the current state of the feature tracking document
+    // throughout the recover process. This process of fetching the data into memory and
+    // overwriting the recovered value is not resilient to crashes.
+    KVCatalog::FeatureTracker::FeatureBits featureInfo;
+    {
+        WriteUnitOfWork wuow(opCtx);
+        featureInfo = _catalog->getFeatureTracker()->getInfo(opCtx);
+    }
+
+    catalog::closeCatalog(opCtx);
+
+    StatusWith<Timestamp> swTimestamp = _engine->recoverToStableTimestamp(opCtx);
+    if (!swTimestamp.isOK()) {
+        return swTimestamp;
+    }
+
+    catalog::openCatalog(opCtx);
+
+    WriteUnitOfWork wuow(opCtx);
+    _catalog->getFeatureTracker()->putInfo(opCtx, featureInfo);
+    wuow.commit();
+
+    log() << "recoverToStableTimestamp successful.";
+    return swTimestamp;
+}
+
+Timestamp KVStorageEngine::getLastStableCheckpointTimestamp() const {
+    return _engine->getLastStableCheckpointTimestamp();
 }
 
 bool KVStorageEngine::supportsReadConcernSnapshot() const {

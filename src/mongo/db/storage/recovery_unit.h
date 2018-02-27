@@ -37,6 +37,8 @@
 #include "mongo/bson/timestamp.h"
 #include "mongo/db/storage/snapshot.h"
 
+#include "mongo/db/namespace_string.h"
+
 namespace mongo {
 
 class BSONObjBuilder;
@@ -167,6 +169,8 @@ public:
     virtual Timestamp getCommitTimestamp() {
         return {};
     }
+
+    virtual void mustBeTimestamped(OperationContext* opCtx, NamespaceString nss) {}
 
     /**
      * Chooses which timestamp to use for read transactions.

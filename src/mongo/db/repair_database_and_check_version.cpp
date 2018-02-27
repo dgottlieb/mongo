@@ -30,6 +30,8 @@
 
 #include "mongo/platform/basic.h"
 
+#include "repair_database_and_check_version.h"
+
 #include "mongo/db/catalog/create_collection.h"
 #include "mongo/db/catalog/database.h"
 #include "mongo/db/catalog/database_catalog_entry.h"
@@ -169,49 +171,6 @@ Status ensureAllCollectionsHaveUUIDs(OperationContext* opCtx,
 
 const NamespaceString startupLogCollectionName("local.startup_log");
 const NamespaceString kSystemReplSetCollection("local.system.replset");
-
-/**
- * If we are in a replset, every replicated collection must have an _id index.
- * As we scan each database, we also gather a list of drop-pending collection namespaces for
- * the DropPendingCollectionReaper to clean up eventually.
- */
-void checkForIdIndexesAndDropPendingCollections(OperationContext* opCtx, Database* db) {
-    if (db->name() == "local") {
-        // Collections in the local database are not replicated, so we do not need an _id index on
-        // any collection. For the same reason, it is not possible for the local database to contain
-        // any drop-pending collections (drops are effective immediately).
-        return;
-    }
-
-    std::list<std::string> collectionNames;
-    db->getDatabaseCatalogEntry()->getCollectionNamespaces(&collectionNames);
-
-    for (const auto& collectionName : collectionNames) {
-        const NamespaceString ns(collectionName);
-
-        if (ns.isDropPendingNamespace()) {
-            auto dropOpTime = fassertStatusOK(40459, ns.getDropPendingNamespaceOpTime());
-            log() << "Found drop-pending namespace " << ns << " with drop optime " << dropOpTime;
-            repl::DropPendingCollectionReaper::get(opCtx)->addDropPendingNamespace(dropOpTime, ns);
-        }
-
-        if (ns.isSystem())
-            continue;
-
-        Collection* coll = db->getCollection(opCtx, collectionName);
-        if (!coll)
-            continue;
-
-        if (coll->getIndexCatalog()->findIdIndex(opCtx))
-            continue;
-
-        log() << "WARNING: the collection '" << collectionName << "' lacks a unique index on _id."
-              << " This index is needed for replication to function properly" << startupWarningsLog;
-        log() << "\t To fix this, you need to create a unique index on _id."
-              << " See http://dochub.mongodb.org/core/build-replica-set-indexes"
-              << startupWarningsLog;
-    }
-}
 
 /**
  * Checks if this server was started without --replset but has a config in local.system.replset
@@ -530,4 +489,48 @@ StatusWith<bool> repairDatabasesAndCheckVersion(OperationContext* opCtx) {
     LOG(1) << "done repairDatabases";
     return nonLocalDatabases;
 }
+
+/**
+ * If we are in a replset, every replicated collection must have an _id index.
+ * As we scan each database, we also gather a list of drop-pending collection namespaces for
+ * the DropPendingCollectionReaper to clean up eventually.
+ */
+void checkForIdIndexesAndDropPendingCollections(OperationContext* opCtx, Database* db) {
+    if (db->name() == "local") {
+        // Collections in the local database are not replicated, so we do not need an _id index on
+        // any collection. For the same reason, it is not possible for the local database to contain
+        // any drop-pending collections (drops are effective immediately).
+        return;
+    }
+
+    std::list<std::string> collectionNames;
+    db->getDatabaseCatalogEntry()->getCollectionNamespaces(&collectionNames);
+
+    for (const auto& collectionName : collectionNames) {
+        const NamespaceString ns(collectionName);
+
+        if (ns.isDropPendingNamespace()) {
+            auto dropOpTime = fassertStatusOK(40459, ns.getDropPendingNamespaceOpTime());
+            log() << "Found drop-pending namespace " << ns << " with drop optime " << dropOpTime;
+            repl::DropPendingCollectionReaper::get(opCtx)->addDropPendingNamespace(dropOpTime, ns);
+        }
+
+        if (ns.isSystem())
+            continue;
+
+        Collection* coll = db->getCollection(opCtx, collectionName);
+        if (!coll)
+            continue;
+
+        if (coll->getIndexCatalog()->findIdIndex(opCtx))
+            continue;
+
+        log() << "WARNING: the collection '" << collectionName << "' lacks a unique index on _id."
+              << " This index is needed for replication to function properly" << startupWarningsLog;
+        log() << "\t To fix this, you need to create a unique index on _id."
+              << " See http://dochub.mongodb.org/core/build-replica-set-indexes"
+              << startupWarningsLog;
+    }
+}
+
 }  // namespace mongo

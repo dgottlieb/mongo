@@ -10,6 +10,9 @@
  * to node 1 and tried to apply its oplog despite not being in a consistent state.
  */
 
+// SERVER-29213: Temporarily disabling. Adapt for recoverable.
+// @tags: [requires_mmapv1]
+
 (function() {
     'use strict';
 

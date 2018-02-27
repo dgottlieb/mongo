@@ -271,9 +271,13 @@ public:
     /**
      * See `StorageEngine::recoverToStableTimestamp`
      */
-    virtual Status recoverToStableTimestamp() {
+    virtual StatusWith<Timestamp> recoverToStableTimestamp(OperationContext* opCtx) {
         fassertFailed(50664);
     }
+
+    virtual Timestamp getLastStableCheckpointTimestamp() const {
+        fassertFailed(50718);
+    };
 
     /**
      * See `StorageEngine::supportsReadConcernSnapshot`

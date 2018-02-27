@@ -589,7 +589,7 @@ StatusWith<std::string> WiredTigerRecordStore::generateCreateString(
     }
     ss << ")";
 
-    const bool keepOldLoggingSettings = true;
+    const bool keepOldLoggingSettings = false;
     if (keepOldLoggingSettings ||
         WiredTigerUtil::useTableLogging(NamespaceString(ns),
                                         getGlobalReplSettings().usingReplSets())) {
@@ -630,6 +630,8 @@ WiredTigerRecordStore::WiredTigerRecordStore(WiredTigerKVEngine* kvEngine,
         if (versionStatus.code() == ErrorCodes::FailedToParse) {
             uasserted(28548, versionStatus.reason());
         } else {
+            throw 12;
+            invariant(false);
             fassertFailedNoTrace(34433);
         }
     }
@@ -1562,6 +1564,17 @@ private:
 };
 
 void WiredTigerRecordStore::_changeNumRecords(OperationContext* opCtx, int64_t diff) {
+    if (opCtx->inRecoveryMode() && !_isOplog) {
+        log() << "Refusing to change num records because in recovery mode.Name: " << ns()
+              << " Val: " << diff;
+        if (opCtx->recoveryCreatedCollections.find(ns()) ==
+            opCtx->recoveryCreatedCollections.end()) {
+            return;
+        } else {
+            log() << "Ignoring because this is a collection created during recovery";
+        }
+    }
+
     opCtx->recoveryUnit()->registerChange(new NumRecordsChange(this, diff));
     if (_numRecords.fetchAndAdd(diff) < 0)
         _numRecords.store(std::max(diff, int64_t(0)));
@@ -1581,6 +1594,10 @@ private:
 };
 
 void WiredTigerRecordStore::_increaseDataSize(OperationContext* opCtx, int64_t amount) {
+    if (opCtx && opCtx->inRecoveryMode() && !_isOplog) {
+        return;
+    }
+
     if (opCtx)
         opCtx->recoveryUnit()->registerChange(new DataSizeChange(this, amount));
 

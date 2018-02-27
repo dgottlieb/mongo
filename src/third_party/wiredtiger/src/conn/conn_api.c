@@ -1038,7 +1038,7 @@ __conn_is_new(WT_CONNECTION *wt_conn)
 static int
 __conn_close(WT_CONNECTION *wt_conn, const char *config)
 {
-	WT_CONFIG_ITEM cval;
+	WT_CONFIG_ITEM cval, stable_val;
 	WT_CONNECTION_IMPL *conn;
 	WT_DECL_RET;
 	WT_SESSION *wt_session;
@@ -1108,9 +1108,11 @@ err:	/*
 		WT_TRET(__wt_open_internal_session(
 		    conn, "close_ckpt", true, 0, &s));
 		if (s != NULL) {
+            WT_TRET(__wt_config_gets(session, cfg, "use_timestamp", &stable_val));
+
 			const char *checkpoint_cfg[] = {
 			    WT_CONFIG_BASE(session, WT_SESSION_checkpoint),
-			    "use_timestamp=false",
+			    (stable_val.val == 0 ? "use_timestamp=false" : "use_timestamp=true"),
 			    NULL
 			};
 			wt_session = &s->iface;

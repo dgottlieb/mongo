@@ -4,6 +4,9 @@
  * rollback and refuse to choose node 1 as its sync source because it doesn't have the minValid.
  */
 
+// SERVER-29213: Temporarily disabling. Adapt for recoverable.
+// @tags: [requires_mmapv1]
+
 (function() {
     'use strict';
 

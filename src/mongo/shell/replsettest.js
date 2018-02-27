@@ -978,7 +978,6 @@ var ReplSetTest = function(opts) {
                 self.awaitReplication();
             });
         }
-
     };
 
     /**

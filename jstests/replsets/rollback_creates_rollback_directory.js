@@ -8,6 +8,10 @@
 // inital sync from, so no primary will be elected. This test induces such a scenario, so cannot be
 // run on ephemeral storage engines.
 // @tags: [requires_persistence]
+
+// SERVER-29213: Turn on with ReplSetTest initiate/reconfig fix.
+// @tags: [requires_mmapv1]
+
 var testName = "rollback_creates_rollback_directory";
 var replTest = new ReplSetTest({name: testName, nodes: 3});
 var nodes = replTest.nodeList();

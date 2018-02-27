@@ -49,8 +49,16 @@
 #include "mongo/util/log.h"
 #include "mongo/util/scopeguard.h"
 
+#include "mongo/db/catalog/database_holder.h"
+#include "mongo/db/repair_database_and_check_version.h"
+#include "mongo/db/repl/drop_pending_collection_reaper.h"
+
 namespace mongo {
 namespace repl {
+
+namespace {
+RollbackImpl::Listener kNoopListener;
+}
 
 RollbackImpl::RollbackImpl(OplogInterface* localOplog,
                            OplogInterface* remoteOplog,
@@ -83,7 +91,7 @@ RollbackImpl::RollbackImpl(OplogInterface* localOplog,
                    storageInterface,
                    replicationProcess,
                    replicationCoordinator,
-                   {}) {}
+                   &kNoopListener) {}
 
 RollbackImpl::~RollbackImpl() {
     shutdown();
@@ -137,14 +145,25 @@ Status RollbackImpl::runRollback(OperationContext* opCtx) {
     }
 
     // Recover to the stable timestamp.
-    status = _recoverToStableTimestamp(opCtx);
-    if (!status.isOK()) {
-        return status;
+    auto stableTimesatmpSW = _recoverToStableTimestamp(opCtx);
+    if (!stableTimesatmpSW.isOK()) {
+        return stableTimesatmpSW.getStatus();
     }
-    _listener->onRecoverToStableTimestamp();
+    _listener->onRecoverToStableTimestamp(stableTimesatmpSW.getValue());
+
+    // Reset the reaper state.
+    DropPendingCollectionReaper::get(opCtx)->clearDropPendingState();
+
+    std::vector<std::string> dbNames;
+    opCtx->getServiceContext()->getGlobalStorageEngine()->listDatabases(&dbNames);
+    for (const auto& dbName : dbNames) {
+        Lock::DBLock dbLock(opCtx, dbName, MODE_X);
+        Database* db = dbHolder().openDb(opCtx, dbName);
+        checkForIdIndexesAndDropPendingCollections(opCtx, db);
+    }
 
     // Run the oplog recovery logic.
-    status = _oplogRecovery(opCtx);
+    status = _oplogRecovery(opCtx, stableTimesatmpSW.getValue());
     if (!status.isOK()) {
         return status;
     }
@@ -437,28 +456,28 @@ Timestamp RollbackImpl::_findTruncateTimestamp(
     return truncatePointTime.getValue().getTimestamp();
 }
 
-Status RollbackImpl::_recoverToStableTimestamp(OperationContext* opCtx) {
+StatusWith<Timestamp> RollbackImpl::_recoverToStableTimestamp(OperationContext* opCtx) {
     if (_isInShutdown()) {
         return Status(ErrorCodes::ShutdownInProgress, "rollback shutting down");
     }
+
     // Recover to the stable timestamp while holding the global exclusive lock.
-    auto serviceCtx = opCtx->getServiceContext();
     {
         Lock::GlobalWrite globalWrite(opCtx);
         try {
-            return _storageInterface->recoverToStableTimestamp(serviceCtx);
+            return _storageInterface->recoverToStableTimestamp(opCtx);
         } catch (...) {
             return exceptionToStatus();
         }
     }
 }
 
-Status RollbackImpl::_oplogRecovery(OperationContext* opCtx) {
+Status RollbackImpl::_oplogRecovery(OperationContext* opCtx, Timestamp stableTimestamp) {
     if (_isInShutdown()) {
         return Status(ErrorCodes::ShutdownInProgress, "rollback shutting down");
     }
     // Run the recovery process.
-    _replicationProcess->getReplicationRecovery()->recoverFromOplog(opCtx);
+    _replicationProcess->getReplicationRecovery()->recoverFromOplog(opCtx, stableTimestamp);
     return Status::OK();
 }
 

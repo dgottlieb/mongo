@@ -326,7 +326,8 @@ StatusWith<std::vector<BSONObj>> MultiIndexBlockImpl::init(const std::vector<BSO
     wunit.commit();
 
     if (MONGO_FAIL_POINT(crashAfterStartingIndexBuild)) {
-        log() << "Index build interrupted due to 'crashAfterStartingIndexBuild' failpoint. Exiting "
+        log() << "Index build interrupted due to 'crashAfterStartingIndexBuild' failpoint. "
+                 "Exiting "
                  "after waiting for changes to become durable.";
         Locker::LockSnapshot lockInfo;
         _opCtx->lockState()->saveLockStateAndUnlock(&lockInfo);
@@ -340,6 +341,13 @@ StatusWith<std::vector<BSONObj>> MultiIndexBlockImpl::init(const std::vector<BSO
 
 Status MultiIndexBlockImpl::insertAllDocumentsInCollection(std::set<RecordId>* dupsOut) {
     invariant(!_opCtx->lockState()->inAWriteUnitOfWork());
+
+    auto restartTracker =
+        MakeGuard([this] { MultikeyPathTracker::get(_opCtx).stopTrackingMultikeyPathInfo(); });
+    if (MultikeyPathTracker::get(_opCtx).isTrackingMultikeyPathInfo()) {
+        restartTracker.Dismiss();
+    }
+    MultikeyPathTracker::get(_opCtx).startTrackingMultikeyPathInfo();
 
     const char* curopMessage = _buildInBackground ? "Index Build (background)" : "Index Build";
     const auto numRecords = _collection->numRecords(_opCtx);
@@ -530,10 +538,28 @@ void MultiIndexBlockImpl::commit() {
     for (size_t i = 0; i < _indexes.size(); i++) {
         _indexes[i].block->success();
 
+        log() << "Bulk? " << bool(_indexes[i].bulk);
         if (_indexes[i].bulk) {
             const auto& bulkBuilder = _indexes[i].bulk;
+            log() << "Multi? " << bulkBuilder->isMultikey();
             if (bulkBuilder->isMultikey()) {
+                // log() << " Paths: " << bulkBuilder->getMultikeyPaths();
                 _indexes[i].block->getEntry()->setMultikey(_opCtx, bulkBuilder->getMultikeyPaths());
+            }
+        } else {
+            for (const auto& info : MultikeyPathTracker::get(_opCtx).getMultikeyPathInfo()) {
+                log() << "Want to set multikey? Name: " << info.indexName
+                      << " IndexName: " << _indexes[i].block->getIndexName() << " Val: ";
+                for (const auto& piece : info.multikeyPaths) {
+                    log() << "\tPiece:";
+                    for (const auto& item : piece) {
+                        log() << "\t\tItem: " << item;
+                    }
+                }
+
+                if (info.indexName == _indexes[i].block->getIndexName()) {
+                    _indexes[i].block->getEntry()->setMultikey(_opCtx, info.multikeyPaths);
+                }
             }
         }
     }

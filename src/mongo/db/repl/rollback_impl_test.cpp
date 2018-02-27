@@ -58,13 +58,13 @@ public:
      * If '_recoverToTimestampStatus' is non-empty, returns it. If '_recoverToTimestampStatus' is
      * empty, updates '_currTimestamp' to be equal to '_stableTimestamp' and returns an OK status.
      */
-    Status recoverToStableTimestamp(ServiceContext* serviceCtx) override {
+    StatusWith<Timestamp> recoverToStableTimestamp(ServiceContext* serviceCtx) override {
         stdx::lock_guard<stdx::mutex> lock(_mutex);
         if (_recoverToTimestampStatus) {
             return _recoverToTimestampStatus.get();
         } else {
             _currTimestamp = _stableTimestamp;
-            return Status::OK();
+            return _currTimestamp;
         }
     }
 
@@ -125,11 +125,14 @@ protected:
     stdx::function<void()> _onTransitionToRollbackFn = [this]() { _transitionedToRollback = true; };
 
     bool _recoveredToStableTimestamp = false;
-    stdx::function<void()> _onRecoverToStableTimestampFn = [this]() {
-        _recoveredToStableTimestamp = true;
-    };
+    stdx::function<void(Timestamp)> _onRecoverToStableTimestampFn =
+        [this](Timestamp stableTimestamp) {
+            _recoveredToStableTimestamp = true;
+            _stableTimestamp = stableTimestamp;
+        };
 
     bool _recoveredFromOplog = false;
+    Timestamp _stableTimestamp;
     stdx::function<void()> _onRecoverFromOplogFn = [this]() { _recoveredFromOplog = true; };
 
     Timestamp _commonPointFound;
@@ -175,19 +178,19 @@ class RollbackImplTest::Listener : public RollbackImpl::Listener {
 public:
     Listener(RollbackImplTest* test) : _test(test) {}
 
-    void onTransitionToRollback() noexcept {
+    void onTransitionToRollback() noexcept override {
         _test->_onTransitionToRollbackFn();
     }
 
-    void onCommonPointFound(Timestamp commonPoint) noexcept {
+    void onCommonPointFound(Timestamp commonPoint) noexcept override {
         _test->_onCommonPointFoundFn(commonPoint);
     }
 
-    void onRecoverToStableTimestamp() noexcept {
+    void onRecoverToStableTimestamp() noexcept override {
         _test->_onRecoverToStableTimestampFn();
     }
 
-    void onRecoverFromOplog() noexcept {
+    void onRecoverFromOplog() noexcept override {
         _test->_onRecoverFromOplogFn();
     }
 
@@ -400,8 +403,9 @@ TEST_F(RollbackImplTest, RollbackSkipsRecoverFromOplogWhenShutdownEarly) {
     ASSERT_OK(_insertOplogEntry(op.first));
     ASSERT_OK(_insertOplogEntry(makeOp(2)));
 
-    _onRecoverToStableTimestampFn = [this]() {
+    _onRecoverToStableTimestampFn = [this](Timestamp stableTimestamp) {
         _recoveredToStableTimestamp = true;
+        _stableTimestamp = stableTimestamp;
         _rollback->shutdown();
     };
 

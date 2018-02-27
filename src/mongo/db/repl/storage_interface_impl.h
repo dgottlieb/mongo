@@ -158,7 +158,11 @@ public:
 
     void setInitialDataTimestamp(ServiceContext* serviceCtx, Timestamp snapshotName) override;
 
-    Status recoverToStableTimestamp(ServiceContext* serviceCtx) override;
+    StatusWith<Timestamp> recoverToStableTimestamp(OperationContext* opCtx) override;
+
+    bool supportsRecoverToStableTimestamp(ServiceContext* serviceCtx) const override;
+
+    Timestamp getLastStableCheckpointTimestamp(ServiceContext* serviceCtx) const override;
 
     /**
      * Checks that the "admin" database contains a supported version of the auth data schema.

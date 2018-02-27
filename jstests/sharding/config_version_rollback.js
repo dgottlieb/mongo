@@ -1,7 +1,7 @@
 /**
  * Tests that if the config.version document on a config server is rolled back, that config server
  * will detect the new config.version document when it gets recreated.
- * @tags: [requires_persistence]
+ * @tags: [requires_persistence, requires_mmapv1]
  */
 
 (function() {

@@ -10,6 +10,9 @@
 // run on ephemeral storage engines.
 // @tags: [requires_persistence]
 
+// SERVER-29213: Turn on with ReplSetTest initiate/reconfig fix.
+// @tags: [requires_mmapv1]
+
 (function() {
     "use strict";
 

@@ -102,6 +102,7 @@ StatusWith<RollBackLocalOperations::RollbackCommonPoint> RollBackLocalOperations
         log() << "diff in end of log times: " << diff << " seconds";
         if (diff > 1800) {
             severe() << "rollback too long a time period for a rollback.";
+            invariant(false);
             return StatusWith<RollbackCommonPoint>(
                 ErrorCodes::ExceededTimeLimit,
                 "rollback error: not willing to roll back more than 30 minutes of data");

@@ -647,6 +647,7 @@ void BackgroundSync::_runRollback(OperationContext* opCtx,
 
     auto storageEngine = opCtx->getServiceContext()->getGlobalStorageEngine();
     if (storageEngine->supportsRecoverToStableTimestamp()) {
+        log() << "Rollback using 'recoverToStableTimestamp' method.";
         _runRollbackViaRecoverToCheckpoint(
             opCtx, source, &localOplog, storageInterface, getConnection);
     } else {

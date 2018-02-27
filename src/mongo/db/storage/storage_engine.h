@@ -329,8 +329,17 @@ public:
      * It is illegal to call this concurrently with `setStableTimestamp` or
      * `setInitialDataTimestamp`.
      */
-    virtual Status recoverToStableTimestamp() {
+    virtual StatusWith<Timestamp> recoverToStableTimestamp(OperationContext* opCtx) {
         fassertFailed(40547);
+    }
+
+    /**
+     * Returns the timestamp of the last stable checkpoint that was taken. If the last checkpoint
+     * was not stable, returns a null timestamp.
+     * fasserts if StorageEngine::supportsRecoverToStableTimestamp() would return false.
+     */
+    virtual Timestamp getLastStableCheckpointTimestamp() const {
+        fassertFailed(50717);
     }
 
     /**

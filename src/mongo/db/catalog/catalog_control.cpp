@@ -41,6 +41,8 @@
 #include "mongo/db/repair_database.h"
 #include "mongo/util/log.h"
 
+#include "mongo/db/index_rebuilder.h"
+
 namespace mongo {
 namespace catalog {
 void closeCatalog(OperationContext* opCtx) {

@@ -1602,61 +1602,6 @@ public:
     }
 };
 
-class WriteCheckpointTimestamp : public StorageTimestampTest {
-public:
-    void run() {
-        // Only run on 'wiredTiger'. No other storage engines to-date support timestamp writes.
-        if (mongo::storageGlobalParams.engine != "wiredTiger") {
-            return;
-        }
-
-        NamespaceString nss(
-            repl::ReplicationConsistencyMarkersImpl::kDefaultCheckpointTimestampNamespace);
-        ASSERT_OK(repl::StorageInterface::get(_opCtx)->dropCollection(_opCtx, nss));
-        { ASSERT_FALSE(AutoGetCollectionForReadCommand(_opCtx, nss).getCollection()); }
-
-        repl::ReplicationConsistencyMarkersImpl consistencyMarkers(
-            repl::StorageInterface::get(_opCtx));
-
-        unittest::log() << "Writing checkpoint timestamp at " << presentTs;
-        ASSERT_EQ(nullTs, consistencyMarkers.getCheckpointTimestamp(_opCtx));
-        consistencyMarkers.writeCheckpointTimestamp(_opCtx, presentTs);
-        ASSERT_EQ(presentTs, consistencyMarkers.getCheckpointTimestamp(_opCtx));
-
-        repl::CheckpointTimestampDocument expectedCheckpointTsPresent;
-        expectedCheckpointTsPresent.setCheckpointTimestamp(presentTs);
-        expectedCheckpointTsPresent.set_id("checkpointTimestamp");
-
-        AutoGetCollectionForReadCommand autoColl(_opCtx, nss);
-        auto checkpointTsColl = autoColl.getCollection();
-        ASSERT(checkpointTsColl);
-
-        assertEmptyCollectionAtTimestamp(checkpointTsColl, pastTs);
-        assertCheckpointTimestampDocumentAtTimestamp(
-            checkpointTsColl, presentTs, expectedCheckpointTsPresent);
-        assertCheckpointTimestampDocumentAtTimestamp(
-            checkpointTsColl, futureTs, expectedCheckpointTsPresent);
-        assertCheckpointTimestampDocumentAtTimestamp(
-            checkpointTsColl, nullTs, expectedCheckpointTsPresent);
-
-        unittest::log() << "Writing checkpoint timestamp at " << futureTs;
-        consistencyMarkers.writeCheckpointTimestamp(_opCtx, futureTs);
-        ASSERT_EQ(futureTs, consistencyMarkers.getCheckpointTimestamp(_opCtx));
-
-        repl::CheckpointTimestampDocument expectedCheckpointTsFuture;
-        expectedCheckpointTsFuture.setCheckpointTimestamp(futureTs);
-        expectedCheckpointTsFuture.set_id("checkpointTimestamp");
-
-        assertEmptyCollectionAtTimestamp(checkpointTsColl, pastTs);
-        assertCheckpointTimestampDocumentAtTimestamp(
-            checkpointTsColl, presentTs, expectedCheckpointTsPresent);
-        assertCheckpointTimestampDocumentAtTimestamp(
-            checkpointTsColl, futureTs, expectedCheckpointTsFuture);
-        assertCheckpointTimestampDocumentAtTimestamp(
-            checkpointTsColl, nullTs, expectedCheckpointTsFuture);
-    }
-};
-
 class ReaperDropIsTimestamped : public StorageTimestampTest {
 public:
     void run() {
@@ -1991,11 +1936,10 @@ public:
         add<SetMinValidInitialSyncFlag>();
         add<SetMinValidToAtLeast>();
         add<SetMinValidAppliedThrough>();
-        add<WriteCheckpointTimestamp>();
-        add<ReaperDropIsTimestamped>();
+        // add<ReaperDropIsTimestamped>(); drop timestamps were removed. may re-add
         // KVDropDatabase<IsPrimary>
-        add<KVDropDatabase<false>>();
-        add<KVDropDatabase<true>>();
+        // add<KVDropDatabase<false>>(); drop timestamps were removed. may re-add
+        // add<KVDropDatabase<true>>(); drop timestamps were removed. may re-add
         // Timestamp<SimulateBackground>
         add<TimestampIndexBuilds<false>>();
         add<TimestampIndexBuilds<true>>();

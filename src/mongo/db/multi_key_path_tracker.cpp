@@ -26,9 +26,13 @@
  *    it in the license file.
  */
 
+#define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kIndex
+
 #include "mongo/platform/basic.h"
 
 #include "mongo/db/multi_key_path_tracker.h"
+
+#include "mongo/util/log.h"
 
 namespace mongo {
 
@@ -36,23 +40,42 @@ const OperationContext::Decoration<MultikeyPathTracker> MultikeyPathTracker::get
     OperationContext::declareDecoration<MultikeyPathTracker>();
 
 void MultikeyPathTracker::addMultikeyPathInfo(MultikeyPathInfo info) {
-    invariant(_trackMultikeyPathInfo);
-    _multikeyPathInfo.emplace_back(info);
+    log() << "Adding multikey. Name: " << info.indexName << " This: " << (void*)this;
+    bool found = false;
+    for (auto& existingChanges : _multikeyPathInfo) {
+        if (existingChanges.nss != info.nss || existingChanges.indexName != info.indexName) {
+            // log() << "Continuing.";
+            continue;
+        }
+
+        found = true;
+        for (auto idx = std::size_t(0); idx < existingChanges.multikeyPaths.size(); ++idx) {
+            existingChanges.multikeyPaths[idx].insert(info.multikeyPaths[idx].begin(),
+                                                      info.multikeyPaths[idx].end());
+        }
+    }
+    if (!found) {
+        _multikeyPathInfo.emplace_back(info);
+    }
 }
 
 const WorkerMultikeyPathInfo& MultikeyPathTracker::getMultikeyPathInfo() const {
+    log() << "Getting multikey path info. This: " << (void*)this;
     return _multikeyPathInfo;
 }
 
 void MultikeyPathTracker::startTrackingMultikeyPathInfo() {
+    log() << "Starting tracking. This: " << (void*)this;
     _trackMultikeyPathInfo = true;
 }
 
 void MultikeyPathTracker::stopTrackingMultikeyPathInfo() {
+    log() << "Stopping tracking. This: " << (void*)this;
     _trackMultikeyPathInfo = false;
 }
 
 bool MultikeyPathTracker::isTrackingMultikeyPathInfo() const {
+    log() << "Is tracking? " << _trackMultikeyPathInfo << " This: " << (void*)this;
     return _trackMultikeyPathInfo;
 }
 

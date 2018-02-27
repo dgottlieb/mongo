@@ -115,7 +115,7 @@ public:
         /**
          * Function called after we recover to the stable timestamp.
          */
-        virtual void onRecoverToStableTimestamp() noexcept {}
+        virtual void onRecoverToStableTimestamp(Timestamp stableTimestamp) noexcept {}
 
         /**
          * Function called after we recover from the oplog.
@@ -214,13 +214,13 @@ private:
     /**
      * Recovers to the stable timestamp while holding the global exclusive lock.
      */
-    Status _recoverToStableTimestamp(OperationContext* opCtx);
+    StatusWith<Timestamp> _recoverToStableTimestamp(OperationContext* opCtx);
 
     /**
      * Runs the oplog recovery logic. This involves applying oplog operations between the stable
      * timestamp and the common point.
      */
-    Status _oplogRecovery(OperationContext* opCtx);
+    Status _oplogRecovery(OperationContext* opCtx, Timestamp stableTimestamp);
 
     /**
      * Process a single oplog entry that is getting rolled back and update the necessary rollback

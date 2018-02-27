@@ -50,9 +50,10 @@ public:
     virtual ~ReplicationRecovery() = default;
 
     /**
-     * Recovers the data on disk from the oplog.
+     * Recovers the data on disk from the oplog. If the provided stable timestamp is not null,
+     * this function assumes the data reflects that timestamp.
      */
-    virtual void recoverFromOplog(OperationContext* opCtx) = 0;
+    virtual void recoverFromOplog(OperationContext* opCtx, Timestamp stableTimestamp) = 0;
 };
 
 class ReplicationRecoveryImpl : public ReplicationRecovery {
@@ -62,9 +63,25 @@ public:
     ReplicationRecoveryImpl(StorageInterface* storageInterface,
                             ReplicationConsistencyMarkers* consistencyMarkers);
 
-    void recoverFromOplog(OperationContext* opCtx) override;
+    void recoverFromOplog(OperationContext* opCtx, Timestamp stableTimestamp) override;
 
 private:
+    /**
+     * After truncating the oplog, completes recovery if we're recovering from a stable timestamp.
+     */
+    void _recoverFromStableTimestamp(OperationContext* opCtx,
+                                     Timestamp stableTimestamp,
+                                     boost::optional<OpTime> topOfOplog,
+                                     OpTime appliedThrough);
+
+    /**
+     * After truncating the oplog, completes recovery if we're recovering from an unstable
+     * checkpoint.
+     */
+    void _recoverFromUnstableCheckpoint(OperationContext* opCtx,
+                                        boost::optional<OpTime> topOfOplog,
+                                        OpTime appliedThrough);
+
     /**
      * Applies all oplog entries from oplogApplicationStartPoint (exclusive) to topOfOplog
      * (inclusive). This fasserts if oplogApplicationStartPoint is not in the oplog.
@@ -77,7 +94,7 @@ private:
      * Gets the last applied OpTime from the end of the oplog. Returns CollectionIsEmpty if there is
      * no oplog.
      */
-    StatusWith<OpTime> _getLastAppliedOpTime(OperationContext* opCtx) const;
+    StatusWith<OpTime> _getTopOfOplog(OperationContext* opCtx) const;
 
     /**
      * Truncates the oplog after and including the "truncateTimestamp" entry.

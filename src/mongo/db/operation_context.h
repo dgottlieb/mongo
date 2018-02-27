@@ -57,6 +57,7 @@ class StringData;
 class WriteUnitOfWork;
 
 namespace repl {
+class RecoveryModeBlock;
 class UnreplicatedWritesBlock;
 }  // namespace repl
 
@@ -442,6 +443,12 @@ public:
         return _hasStashedCursor;
     }
 
+    bool inRecoveryMode() {
+        return _inRecoveryMode;
+    }
+
+    std::set<std::string> recoveryCreatedCollections;
+
 private:
     /**
      * Returns true if this operation has a deadline and it has passed according to the fast clock
@@ -473,8 +480,16 @@ private:
         _writesAreReplicated = writesAreReplicated;
     }
 
+    void setInRecoveryMode(bool inRecoveryMode) {
+        _inRecoveryMode = inRecoveryMode;
+        if (!inRecoveryMode) {
+            recoveryCreatedCollections.clear();
+        }
+    }
+
     friend class WriteUnitOfWork;
     friend class repl::UnreplicatedWritesBlock;
+    friend class repl::RecoveryModeBlock;
     Client* const _client;
     const unsigned int _opId;
 
@@ -525,6 +540,8 @@ private:
     Timer _elapsedTime;
 
     bool _writesAreReplicated = true;
+
+    bool _inRecoveryMode = false;
 
     // When true, the cursor used by this operation will be stashed for use by a subsequent network
     // operation.
@@ -630,6 +647,24 @@ public:
 private:
     OperationContext* _opCtx;
     const bool _shouldReplicateWrites;
+};
+
+class RecoveryModeBlock {
+    MONGO_DISALLOW_COPYING(RecoveryModeBlock);
+
+public:
+    RecoveryModeBlock(OperationContext* opCtx) : _opCtx(opCtx) {
+        invariant(!opCtx->_inRecoveryMode);
+        opCtx->_inRecoveryMode = true;
+    }
+
+    ~RecoveryModeBlock() {
+        _opCtx->setInRecoveryMode(false);
+    }
+
+private:
+    OperationContext* _opCtx;
+    bool _insideRecoveryModeBlock;
 };
 }  // namespace repl
 }  // namespace mongo

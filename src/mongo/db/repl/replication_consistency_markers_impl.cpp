@@ -138,6 +138,8 @@ void ReplicationConsistencyMarkersImpl::setInitialSyncFlag(OperationContext* opC
     TimestampedBSONObj update;
     update.obj = BSON("$set" << kInitialSyncFlag);
 
+    log() << "Setting initial sync flag.";
+
     // We do not provide a timestamp when we set the initial sync flag. Initial sync can only
     // occur right when we start up, and thus there cannot be any checkpoints being taken. This
     // write should go into the next checkpoint.
@@ -168,6 +170,7 @@ void ReplicationConsistencyMarkersImpl::clearInitialSyncFlag(OperationContext* o
     // no timestamp.
     update.timestamp = time.getTimestamp();
 
+    log() << "Clearing initial sync flag. Ts: " << time.getTimestamp();
     _updateMinValidDocument(opCtx, update);
 
     if (getGlobalServiceContext()->getGlobalStorageEngine()->isDurable()) {
@@ -368,7 +371,9 @@ void ReplicationConsistencyMarkersImpl::_upsertCheckpointTimestampDocument(
     OperationContext* opCtx, const BSONObj& updateSpec, const Timestamp& ts) {
     // Do all writes in this function at the timestamp 'ts'. This will also prevent any lower
     // level functions from setting their own timestamps that are not 'ts'.
-    TimestampBlock tsBlock(opCtx, ts);
+
+    // Trying to write behind the stable timestamp does not work.
+    // TimestampBlock tsBlock(opCtx, ts);
     auto status = _storageInterface->upsertById(
         opCtx, _checkpointTimestampNss, kCheckpointTimestampId["_id"], updateSpec);
 
@@ -387,7 +392,7 @@ void ReplicationConsistencyMarkersImpl::_upsertCheckpointTimestampDocument(
 
 void ReplicationConsistencyMarkersImpl::writeCheckpointTimestamp(OperationContext* opCtx,
                                                                  const Timestamp& timestamp) {
-    LOG(3) << "setting checkpoint timestamp to: " << timestamp.toBSON();
+    LOG(0) << "setting checkpoint timestamp to: " << timestamp.toBSON();
 
     auto timestampField = CheckpointTimestampDocument::kCheckpointTimestampFieldName;
     auto spec = BSON("$set" << BSON(timestampField << timestamp));

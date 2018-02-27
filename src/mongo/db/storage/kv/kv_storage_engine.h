@@ -121,7 +121,9 @@ public:
 
     virtual bool supportsRecoverToStableTimestamp() const override;
 
-    virtual Status recoverToStableTimestamp() override;
+    virtual StatusWith<Timestamp> recoverToStableTimestamp(OperationContext* opCtx) override;
+
+    virtual Timestamp getLastStableCheckpointTimestamp() const override;
 
     bool supportsReadConcernSnapshot() const final;
 

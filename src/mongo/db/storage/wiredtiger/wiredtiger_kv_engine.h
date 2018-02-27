@@ -181,7 +181,11 @@ public:
 
     virtual bool supportsRecoverToStableTimestamp() const override;
 
-    virtual Status recoverToStableTimestamp() override;
+    virtual StatusWith<Timestamp> recoverToStableTimestamp(OperationContext* opCtx) override;
+
+    virtual Timestamp getLastStableCheckpointTimestamp() const override {
+        return _lastStableCheckpointTimestamp;
+    }
 
     bool supportsReadConcernSnapshot() const final;
 
@@ -305,5 +309,6 @@ private:
     mutable Date_t _previousCheckedDropsQueued;
 
     std::unique_ptr<WiredTigerSession> _backupSession;
+    Timestamp _lastStableCheckpointTimestamp;
 };
 }

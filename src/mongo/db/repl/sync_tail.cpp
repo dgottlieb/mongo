@@ -367,11 +367,16 @@ Status SyncTail::syncApply(OperationContext* opCtx,
                 OldClientContext ctx(opCtx, autoColl.getNss().ns(), db);
                 return applyOp(ctx.db());
             } catch (ExceptionFor<ErrorCodes::NamespaceNotFound>& ex) {
+                if (oplogApplicationMode == OplogApplication::Mode::kRecovering) {
+                    return Status::OK();
+                }
+
                 // Delete operations on non-existent namespaces can be treated as successful for
                 // idempotency reasons.
                 if (opType[0] == 'd') {
                     return Status::OK();
                 }
+
                 ex.addContext(str::stream() << "Failed to apply operation: " << redact(op));
                 throw;
             }
@@ -1465,7 +1470,8 @@ Status multiInitialSyncApply_noAbort(OperationContext* opCtx,
     UnreplicatedWritesBlock uwb(opCtx);
     DisableDocumentValidation validationDisabler(opCtx);
     {  // Ensure that the MultikeyPathTracker stops tracking paths.
-        ON_BLOCK_EXIT([opCtx] { MultikeyPathTracker::get(opCtx).stopTrackingMultikeyPathInfo(); });
+        auto stopTracker =
+            MakeGuard([opCtx] { MultikeyPathTracker::get(opCtx).stopTrackingMultikeyPathInfo(); });
         MultikeyPathTracker::get(opCtx).startTrackingMultikeyPathInfo();
 
         // allow us to get through the magic barrier
@@ -1478,9 +1484,9 @@ Status multiInitialSyncApply_noAbort(OperationContext* opCtx,
                     SyncTail::syncApply(opCtx, entry.raw, OplogApplication::Mode::kInitialSync);
                 if (!s.isOK()) {
                     // In initial sync, update operations can cause documents to be missed during
-                    // collection cloning. As a result, it is possible that a document that we need
-                    // to update is not present locally. In that case we fetch the document from the
-                    // sync source.
+                    // collection cloning. As a result, it is possible that a document that we
+                    // need to update is not present locally. In that case we fetch the document
+                    // from the sync source.
                     if (s != ErrorCodes::UpdateOperationFailed) {
                         error() << "Error applying operation: " << redact(s) << " ("
                                 << redact(entry.toBSON()) << ")";

@@ -52,6 +52,7 @@ TestData.skipGossipingClusterTime = true;
     // upgradeSet leaves its connections logged in as root
     var rstConn3 = rst.getPrimary();
     rstConn3.getDB('test').a.insert({a: 1, str: 'TESTTESTTEST'});
+    // assert.eq(3, rstConn3.getDB('test').a.find().itcount(), 'Error interacting with replSet');
     assert.eq(3, rstConn3.getDB('test').a.count(), 'Error interacting with replSet');
 
     rst.stopSet();

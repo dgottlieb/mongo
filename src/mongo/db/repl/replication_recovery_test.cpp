@@ -72,9 +72,31 @@ public:
         _onSetInitialDataTimestampFn = onSetInitialDataTimestampFn;
     }
 
+    Timestamp getLastStableCheckpointTimestamp(ServiceContext* serviceCtx) const override {
+        stdx::lock_guard<stdx::mutex> lock(_mutex);
+        return _lastStableCheckpointTimestamp;
+    }
+
+    void setLastStableCheckpointTimestamp(Timestamp lastStableCheckpointTimestamp) {
+        stdx::lock_guard<stdx::mutex> lock(_mutex);
+        _lastStableCheckpointTimestamp = lastStableCheckpointTimestamp;
+    }
+
+    bool supportsRecoverToStableTimestamp(ServiceContext* serviceCtx) const override {
+        stdx::lock_guard<stdx::mutex> lock(_mutex);
+        return _supportsRecoverToStableTimestamp;
+    }
+
+    void setSupportsRecoverToStableTimestamp(bool supports) {
+        stdx::lock_guard<stdx::mutex> lock(_mutex);
+        _supportsRecoverToStableTimestamp = supports;
+    }
+
 private:
     mutable stdx::mutex _mutex;
     Timestamp _initialDataTimestamp = Timestamp::min();
+    Timestamp _lastStableCheckpointTimestamp = Timestamp::min();
+    bool _supportsRecoverToStableTimestamp = true;
     OnSetInitialDataTimestampFn _onSetInitialDataTimestampFn = []() {};
 };
 
@@ -227,7 +249,7 @@ TEST_F(ReplicationRecoveryTest, RecoveryWithNoOplogSucceeds) {
     ASSERT_OK(getStorageInterface()->createCollection(
         opCtx, NamespaceString("local.other"), generateOptionsWithUuid()));
 
-    recovery.recoverFromOplog(opCtx);
+    recovery.recoverFromOplog(opCtx, {});
 
     _assertDocsInOplog(opCtx, {});
     _assertDocsInTestCollection(opCtx, {});
@@ -240,7 +262,7 @@ TEST_F(ReplicationRecoveryTest, RecoveryWithEmptyOplogSucceeds) {
 
     _setUpOplog(opCtx, getStorageInterface(), {});
 
-    recovery.recoverFromOplog(opCtx);
+    recovery.recoverFromOplog(opCtx, {});
 
     _assertDocsInOplog(opCtx, {});
     _assertDocsInTestCollection(opCtx, {});
@@ -260,7 +282,7 @@ DEATH_TEST_F(ReplicationRecoveryTest,
     ASSERT_OK(getStorageInterface()->createCollection(
         opCtx, NamespaceString("local.other"), generateOptionsWithUuid()));
 
-    recovery.recoverFromOplog(opCtx);
+    recovery.recoverFromOplog(opCtx, {});
 }
 
 DEATH_TEST_F(ReplicationRecoveryTest, TruncateEntireOplogFasserts, "Fatal Assertion 40296") {
@@ -271,7 +293,7 @@ DEATH_TEST_F(ReplicationRecoveryTest, TruncateEntireOplogFasserts, "Fatal Assert
     getConsistencyMarkers()->setAppliedThrough(opCtx, OpTime(Timestamp(3, 3), 1));
     _setUpOplog(opCtx, getStorageInterface(), {7, 8, 9});
 
-    recovery.recoverFromOplog(opCtx);
+    recovery.recoverFromOplog(opCtx, {});
 }
 
 TEST_F(ReplicationRecoveryTest, RecoveryTruncatesOplogAtOplogTruncateAfterPoint) {
@@ -282,7 +304,7 @@ TEST_F(ReplicationRecoveryTest, RecoveryTruncatesOplogAtOplogTruncateAfterPoint)
     getConsistencyMarkers()->setAppliedThrough(opCtx, OpTime(Timestamp(3, 3), 1));
     _setUpOplog(opCtx, getStorageInterface(), {1, 2, 3, 4, 5});
 
-    recovery.recoverFromOplog(opCtx);
+    recovery.recoverFromOplog(opCtx, {});
 
     _assertDocsInOplog(opCtx, {1, 2, 3});
     _assertDocsInTestCollection(opCtx, {});
@@ -300,7 +322,7 @@ TEST_F(ReplicationRecoveryTest, RecoverySkipsEverythingIfInitialSyncFlagIsSet) {
     getConsistencyMarkers()->setAppliedThrough(opCtx, OpTime(Timestamp(1, 1), 1));
     _setUpOplog(opCtx, getStorageInterface(), {1, 2, 3, 4, 5});
 
-    recovery.recoverFromOplog(opCtx);
+    recovery.recoverFromOplog(opCtx, {});
 
     _assertDocsInOplog(opCtx, {1, 2, 3, 4, 5});
     _assertDocsInTestCollection(opCtx, {});
@@ -316,7 +338,7 @@ TEST_F(ReplicationRecoveryTest, RecoveryAppliesDocumentsWhenAppliedThroughIsBehi
     getConsistencyMarkers()->setAppliedThrough(opCtx, OpTime(Timestamp(3, 3), 1));
     _setUpOplog(opCtx, getStorageInterface(), {1, 2, 3, 4, 5});
 
-    recovery.recoverFromOplog(opCtx);
+    recovery.recoverFromOplog(opCtx, {});
 
     _assertDocsInOplog(opCtx, {1, 2, 3, 4, 5});
     _assertDocsInTestCollection(opCtx, {4, 5});
@@ -333,7 +355,7 @@ TEST_F(ReplicationRecoveryTest, RecoveryAppliesDocumentsWhenAppliedThroughIsBehi
     getConsistencyMarkers()->setAppliedThrough(opCtx, OpTime(Timestamp(1, 1), 1));
     _setUpOplog(opCtx, getStorageInterface(), {1, 2, 3, 4, 5});
 
-    recovery.recoverFromOplog(opCtx);
+    recovery.recoverFromOplog(opCtx, {});
 
     _assertDocsInOplog(opCtx, {1, 2, 3});
     _assertDocsInTestCollection(opCtx, {2, 3});
@@ -346,10 +368,10 @@ TEST_F(ReplicationRecoveryTest, RecoveryAppliesDocumentsWhenCheckpointTimestampI
     ReplicationRecoveryImpl recovery(getStorageInterface(), getConsistencyMarkers());
     auto opCtx = getOperationContext();
 
-    getConsistencyMarkers()->writeCheckpointTimestamp(opCtx, Timestamp(3, 3));
+    getStorageInterfaceRecovery()->setLastStableCheckpointTimestamp(Timestamp(3, 3));
     _setUpOplog(opCtx, getStorageInterface(), {1, 2, 3, 4, 5});
 
-    recovery.recoverFromOplog(opCtx);
+    recovery.recoverFromOplog(opCtx, {});
 
     _assertDocsInOplog(opCtx, {1, 2, 3, 4, 5});
     _assertDocsInTestCollection(opCtx, {4, 5});
@@ -364,10 +386,10 @@ TEST_F(ReplicationRecoveryTest,
     auto opCtx = getOperationContext();
 
     getConsistencyMarkers()->setOplogTruncateAfterPoint(opCtx, Timestamp(4, 4));
-    getConsistencyMarkers()->writeCheckpointTimestamp(opCtx, Timestamp(1, 1));
+    getStorageInterfaceRecovery()->setLastStableCheckpointTimestamp(Timestamp(1, 1));
     _setUpOplog(opCtx, getStorageInterface(), {1, 2, 3, 4, 5});
 
-    recovery.recoverFromOplog(opCtx);
+    recovery.recoverFromOplog(opCtx, {});
 
     _assertDocsInOplog(opCtx, {1, 2, 3});
     _assertDocsInTestCollection(opCtx, {2, 3});
@@ -383,7 +405,7 @@ DEATH_TEST_F(ReplicationRecoveryTest, AppliedThroughBehindOplogFasserts, "Fatal 
     getConsistencyMarkers()->setAppliedThrough(opCtx, OpTime(Timestamp(1, 1), 1));
     _setUpOplog(opCtx, getStorageInterface(), {3, 4, 5});
 
-    recovery.recoverFromOplog(opCtx);
+    recovery.recoverFromOplog(opCtx, {});
 }
 
 DEATH_TEST_F(ReplicationRecoveryTest,
@@ -395,7 +417,7 @@ DEATH_TEST_F(ReplicationRecoveryTest,
     getConsistencyMarkers()->setAppliedThrough(opCtx, OpTime(Timestamp(9, 9), 1));
     _setUpOplog(opCtx, getStorageInterface(), {1, 2, 3, 4, 5});
 
-    recovery.recoverFromOplog(opCtx);
+    recovery.recoverFromOplog(opCtx, {});
 }
 
 DEATH_TEST_F(ReplicationRecoveryTest,
@@ -407,7 +429,7 @@ DEATH_TEST_F(ReplicationRecoveryTest,
     getConsistencyMarkers()->setAppliedThrough(opCtx, OpTime(Timestamp(3, 3), 1));
     _setUpOplog(opCtx, getStorageInterface(), {1, 2, 4, 5});
 
-    recovery.recoverFromOplog(opCtx);
+    recovery.recoverFromOplog(opCtx, {});
 }
 
 TEST_F(ReplicationRecoveryTest, RecoverySetsInitialDataTimestampToCheckpointTimestampIfItExists) {
@@ -418,10 +440,10 @@ TEST_F(ReplicationRecoveryTest, RecoverySetsInitialDataTimestampToCheckpointTime
     getStorageInterfaceRecovery()->setOnSetInitialDataTimestampFn(
         [&]() { ASSERT(getConsistencyMarkers()->getAppliedThrough(opCtx).isNull()); });
 
-    getConsistencyMarkers()->writeCheckpointTimestamp(opCtx, Timestamp(4, 4));
+    getStorageInterfaceRecovery()->setLastStableCheckpointTimestamp(Timestamp(4, 4));
     _setUpOplog(opCtx, getStorageInterface(), {1, 2, 3, 4, 5, 6});
 
-    recovery.recoverFromOplog(opCtx);
+    recovery.recoverFromOplog(opCtx, {});
 
     _assertDocsInOplog(opCtx, {1, 2, 3, 4, 5, 6});
     _assertDocsInTestCollection(opCtx, {5, 6});
@@ -437,7 +459,7 @@ TEST_F(ReplicationRecoveryTest,
 
     _setUpOplog(opCtx, getStorageInterface(), {5});
 
-    recovery.recoverFromOplog(opCtx);
+    recovery.recoverFromOplog(opCtx, {});
 
     _assertDocsInOplog(opCtx, {5});
     _assertDocsInTestCollection(opCtx, {});
@@ -460,7 +482,7 @@ TEST_F(ReplicationRecoveryTest,
 
     _setUpOplog(opCtx, getStorageInterface(), {5, 6});
 
-    recovery.recoverFromOplog(opCtx);
+    recovery.recoverFromOplog(opCtx, {});
 
     _assertDocsInOplog(opCtx, {5, 6});
     _assertDocsInTestCollection(opCtx, {6});
@@ -477,7 +499,7 @@ TEST_F(ReplicationRecoveryTest,
 
     _setUpOplog(opCtx, getStorageInterface(), {});
 
-    recovery.recoverFromOplog(opCtx);
+    recovery.recoverFromOplog(opCtx, {});
 
     _assertDocsInOplog(opCtx, {});
     _assertDocsInTestCollection(opCtx, {});
@@ -488,17 +510,17 @@ TEST_F(ReplicationRecoveryTest,
 }
 
 DEATH_TEST_F(ReplicationRecoveryTest,
-             RecoveryFassertsWithNonNullCheckpointTimestampAndAppliedThrough,
-             "Fatal Assertion 40603") {
+             RecoveryInvariantsWithUnequalCheckpointTimestampAndAppliedThrough,
+             "Invariant failure") {
     ReplicationRecoveryImpl recovery(getStorageInterface(), getConsistencyMarkers());
     auto opCtx = getOperationContext();
 
     _setUpOplog(opCtx, getStorageInterface(), {5});
 
     getConsistencyMarkers()->setAppliedThrough(opCtx, OpTime(Timestamp(3, 3), 1));
-    getConsistencyMarkers()->writeCheckpointTimestamp(opCtx, Timestamp(4, 4));
+    getStorageInterfaceRecovery()->setLastStableCheckpointTimestamp(Timestamp(4, 4));
 
-    recovery.recoverFromOplog(opCtx);
+    recovery.recoverFromOplog(opCtx, {});
 }
 
 

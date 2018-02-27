@@ -430,10 +430,6 @@ Status StorageInterfaceImpl::dropCollection(OperationContext* opCtx, const Names
         if (!status.isOK()) {
             return status;
         }
-        if (nss.isDropPendingNamespace() && !opCtx->writesAreReplicated()) {
-            Timestamp ts = LogicalClock::get(opCtx)->getClusterTime().asTimestamp();
-            fassertStatusOK(50661, opCtx->recoveryUnit()->setTimestamp(ts));
-        }
         wunit.commit();
         return Status::OK();
     });
@@ -1021,8 +1017,16 @@ void StorageInterfaceImpl::setInitialDataTimestamp(ServiceContext* serviceCtx,
     serviceCtx->getGlobalStorageEngine()->setInitialDataTimestamp(snapshotName);
 }
 
-Status StorageInterfaceImpl::recoverToStableTimestamp(ServiceContext* serviceCtx) {
-    return serviceCtx->getGlobalStorageEngine()->recoverToStableTimestamp();
+StatusWith<Timestamp> StorageInterfaceImpl::recoverToStableTimestamp(OperationContext* opCtx) {
+    return opCtx->getServiceContext()->getGlobalStorageEngine()->recoverToStableTimestamp(opCtx);
+}
+
+bool StorageInterfaceImpl::supportsRecoverToStableTimestamp(ServiceContext* serviceCtx) const {
+    return serviceCtx->getGlobalStorageEngine()->supportsRecoverToStableTimestamp();
+}
+
+Timestamp StorageInterfaceImpl::getLastStableCheckpointTimestamp(ServiceContext* serviceCtx) const {
+    return serviceCtx->getGlobalStorageEngine()->getLastStableCheckpointTimestamp();
 }
 
 Status StorageInterfaceImpl::isAdminDbValid(OperationContext* opCtx) {

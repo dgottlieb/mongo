@@ -31,6 +31,7 @@
 #include "mongo/base/status_with.h"
 
 namespace mongo {
+class Database;
 class OperationContext;
 
 /**
@@ -38,4 +39,5 @@ class OperationContext;
 * represents whether there are non-local databases.
 */
 StatusWith<bool> repairDatabasesAndCheckVersion(OperationContext* opCtx);
+void checkForIdIndexesAndDropPendingCollections(OperationContext* opCtx, Database* db);
 }

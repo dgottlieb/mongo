@@ -52,6 +52,7 @@
 #include "mongo/db/repl/oplog_buffer.h"
 #include "mongo/db/repl/oplog_fetcher.h"
 #include "mongo/db/repl/optime.h"
+#include "mongo/db/repl/replication_consistency_markers_impl.h"
 #include "mongo/db/repl/replication_process.h"
 #include "mongo/db/repl/storage_interface.h"
 #include "mongo/db/repl/sync_source_selector.h"
@@ -382,6 +383,26 @@ void InitialSyncer::_tearDown_inlock(OperationContext* opCtx,
     // this node's oplog, it won't appear empty.
     _storage->waitForAllEarlierOplogWritesToBeVisible(opCtx);
 
+    // Create necessary replication collections before coming out of initial sync, particularly
+    // journaled collections. Even though writes to journaled collections will persist a crash,
+    // surprisingly, the collection itself may not.
+    std::vector<StringData> failedCollectionCreations;
+    for (auto nss : std::vector<StringData>(
+             {ReplicationConsistencyMarkersImpl::kDefaultMinValidNamespace,
+              ReplicationConsistencyMarkersImpl::kDefaultOplogTruncateAfterPointNamespace,
+              ReplicationConsistencyMarkersImpl::kDefaultCheckpointTimestampNamespace})) {
+        auto status = _storage->createCollection(opCtx, NamespaceString(nss), CollectionOptions());
+        if (!status.isOK() && status.code() != ErrorCodes::NamespaceExists) {
+            severe() << "Failed to create internal collection. Coll: " << nss
+                     << " Error: " << status;
+            failedCollectionCreations.push_back(nss);
+        }
+    }
+    fassert(50719, failedCollectionCreations.empty());
+
+    _replicationProcess->getConsistencyMarkers()->clearInitialSyncFlag(opCtx);
+
+    log() << "Initial data timestamp set. TS: " << lastApplied.getValue().opTime.getTimestamp();
     _storage->setInitialDataTimestamp(opCtx->getServiceContext(),
                                       lastApplied.getValue().opTime.getTimestamp());
 
@@ -393,7 +414,6 @@ void InitialSyncer::_tearDown_inlock(OperationContext* opCtx,
         invariant(currentLastAppliedOpTime == lastApplied.getValue().opTime);
     }
 
-    _replicationProcess->getConsistencyMarkers()->clearInitialSyncFlag(opCtx);
     log() << "initial sync done; took "
           << duration_cast<Seconds>(_stats.initialSyncEnd - _stats.initialSyncStart) << ".";
     initialSyncCompletes.increment();
