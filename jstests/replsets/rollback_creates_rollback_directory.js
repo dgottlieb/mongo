@@ -9,7 +9,8 @@
 // run on ephemeral storage engines.
 // @tags: [requires_persistence]
 
-// SERVER-29213: Turn on with ReplSetTest initiate/reconfig fix.
+// SERVER-29213: Turn on with ReplSetTest initiate/reconfig fix and rollback file generation
+// (SERVER-29051).
 // @tags: [requires_mmapv1]
 
 var testName = "rollback_creates_rollback_directory";
