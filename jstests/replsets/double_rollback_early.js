@@ -4,7 +4,7 @@
  * rollback and refuse to choose node 1 as its sync source because it doesn't have the minValid.
  */
 
-// SERVER-29213: Temporarily disabling. Adapt for recoverable.
+// Rollback to a stable timestamp does not set a minValid and should be able to sync from any node.
 // @tags: [requires_mmapv1]
 
 (function() {

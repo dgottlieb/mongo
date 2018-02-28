@@ -10,7 +10,7 @@
  * to node 1 and tried to apply its oplog despite not being in a consistent state.
  */
 
-// SERVER-29213: Temporarily disabling. Adapt for recoverable.
+// Rollback to a stable timestamp does not set a minValid and should be able to sync from any node.
 // @tags: [requires_mmapv1]
 
 (function() {
