@@ -565,7 +565,7 @@ void WiredTigerKVEngine::cleanShutdown() {
             serverGlobalParams.featureCompatibility.getVersion() ==
                 ServerGlobalParams::FeatureCompatibility::Version::kFullyDowngradedTo36;
 
-        if (!_readOnly) {
+        if (!_readOnly && !needsDowngrade) {
             auto initDataTs = _checkpointThread->getInitialDataTimestamp();
             auto stableTs = _checkpointThread->getStableTimestamp();
             if (initDataTs && stableTs >= initDataTs) {
@@ -621,7 +621,6 @@ void WiredTigerKVEngine::cleanShutdown() {
 
             tableCursor->close(tableCursor);
             session->close(session, nullptr);
-            invariantWTOK(conn->reconfigure(conn, "compatibility=(release=2.9)"));
             invariantWTOK(conn->close(conn, closeConfig.c_str()));
         }
     }
