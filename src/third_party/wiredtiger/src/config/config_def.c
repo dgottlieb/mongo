@@ -1205,7 +1205,7 @@ static const WT_CONFIG_ENTRY config_entries[] = {
 	  confchk_WT_CONNECTION_async_new_op, 4
 	},
 	{ "WT_CONNECTION.close",
-	  "leak_memory=false,use_timestamp=false",
+	  "leak_memory=false,use_timestamp=true",
 	  confchk_WT_CONNECTION_close, 2
 	},
 	{ "WT_CONNECTION.debug_info",

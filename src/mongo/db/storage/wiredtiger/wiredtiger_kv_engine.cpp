@@ -565,14 +565,12 @@ void WiredTigerKVEngine::cleanShutdown() {
             serverGlobalParams.featureCompatibility.getVersion() ==
                 ServerGlobalParams::FeatureCompatibility::Version::kFullyDowngradedTo36;
 
-        if (!_readOnly && !needsDowngrade) {
-            auto initDataTs = _checkpointThread->getInitialDataTimestamp();
-            auto stableTs = _checkpointThread->getStableTimestamp();
-            if (initDataTs && stableTs >= initDataTs) {
-                closeConfig += "use_timestamp=true";
-                invariantWTOK(_conn->rollback_to_stable(_conn, nullptr));
-            }
+        if (!needsDowngrade) {
+            invariantWTOK(_conn->close(_conn, closeConfig.c_str()));
+            return;
         }
+
+        closeConfig += ",use_timestamp=false";
         invariantWTOK(_conn->close(_conn, closeConfig.c_str()));
         _conn = nullptr;
 
