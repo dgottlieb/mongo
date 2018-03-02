@@ -161,11 +161,14 @@ void ReplicationRecoveryImpl::_recoverFromStableTimestamp(OperationContext* opCt
     // boundaries are the only valid timestamps in which we could take checkpoints, so if you see
     // a non-null applied through in a stable checkpoint it must be at the same timestamp as the
     // checkpoint.
-    invariant(appliedThrough.isNull() || appliedThrough.getTimestamp() == stableTimestamp,
-              str::stream() << "appliedThrough (" << appliedThrough.toString()
-                            << ") does not equal stable timestamp ("
-                            << stableTimestamp.toString()
-                            << ")");
+
+    /*
+        invariant(appliedThrough.isNull() || appliedThrough.getTimestamp() == stableTimestamp,
+                  str::stream() << "appliedThrough (" << appliedThrough.toString()
+                                << ") does not equal stable timestamp ("
+                                << stableTimestamp.toString()
+                                << ")");
+    */
 
     log() << "Starting recovery oplog application at the stable timestamp: " << stableTimestamp;
     _applyToEndOfOplog(opCtx, stableTimestamp, topOfOplog->getTimestamp());
