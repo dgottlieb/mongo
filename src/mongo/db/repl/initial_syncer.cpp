@@ -398,7 +398,7 @@ void InitialSyncer::_tearDown_inlock(OperationContext* opCtx,
             failedCollectionCreations.push_back(nss);
         }
     }
-    fassert(50719, failedCollectionCreations.empty());
+    fassert(50727, failedCollectionCreations.empty());
 
     _replicationProcess->getConsistencyMarkers()->clearInitialSyncFlag(opCtx);
 

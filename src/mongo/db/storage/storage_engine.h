@@ -339,7 +339,7 @@ public:
      * fasserts if StorageEngine::supportsRecoverToStableTimestamp() would return false.
      */
     virtual Timestamp getLastStableCheckpointTimestamp() const {
-        fassertFailed(50717);
+        fassertFailed(50725);
     }
 
     /**

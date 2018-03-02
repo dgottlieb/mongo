@@ -276,7 +276,7 @@ public:
     }
 
     virtual Timestamp getLastStableCheckpointTimestamp() const {
-        fassertFailed(50718);
+        fassertFailed(50726);
     };
 
     /**
