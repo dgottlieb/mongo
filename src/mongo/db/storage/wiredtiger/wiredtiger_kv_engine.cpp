@@ -397,7 +397,7 @@ WiredTigerKVEngine::WiredTigerKVEngine(const std::string& canonicalName,
         ss << wiredTigerGlobalOptions.journalCompressor << "),";
         ss << "file_manager=(close_idle_time=100000),";  //~28 hours, will put better fix in 3.1.x
         ss << "statistics_log=(wait=" << wiredTigerGlobalOptions.statisticsLogDelaySecs << "),";
-        ss << "verbose=(recovery_progress),";
+        ss << "verbose=(recovery_progress,recovery),";
     }
     ss << WiredTigerCustomizationHooks::get(getGlobalServiceContext())
               ->getTableCreateConfig("system");
@@ -574,6 +574,8 @@ void WiredTigerKVEngine::cleanShutdown() {
         closeConfig += "use_timestamp=false,";
         invariantWTOK(_conn->close(_conn, closeConfig.c_str()));
         _conn = nullptr;
+
+        log() << "Downgrading to FCV 3.6";
 
         // If FCV 3.6, enable WT logging on all tables.
         if (needsDowngrade) {
