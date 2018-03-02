@@ -58,7 +58,7 @@ public:
      * If '_recoverToTimestampStatus' is non-empty, returns it. If '_recoverToTimestampStatus' is
      * empty, updates '_currTimestamp' to be equal to '_stableTimestamp' and returns an OK status.
      */
-    StatusWith<Timestamp> recoverToStableTimestamp(ServiceContext* serviceCtx) override {
+    StatusWith<Timestamp> recoverToStableTimestamp(OperationContext* opCtx) override {
         stdx::lock_guard<stdx::mutex> lock(_mutex);
         if (_recoverToTimestampStatus) {
             return _recoverToTimestampStatus.get();
@@ -186,8 +186,8 @@ public:
         _test->_onCommonPointFoundFn(commonPoint);
     }
 
-    void onRecoverToStableTimestamp() noexcept override {
-        _test->_onRecoverToStableTimestampFn();
+    void onRecoverToStableTimestamp(Timestamp stableTimestamp) noexcept override {
+        _test->_onRecoverToStableTimestampFn(stableTimestamp);
     }
 
     void onRecoverFromOplog() noexcept override {
