@@ -67,12 +67,6 @@
     // shardIdentity insert, which should trigger a rollback on the original primary when it comes
     // back online.
     replTest.stop(priConn);
-    priConn = replTest.restart(0, {noReplSet: true});  // Restart as a standalone node.
-    jsTestLog("Stop 1");
-    jsTestLog(tojson(priConn.getDB('admin').system.version.findOne({_id: 'shardIdentity'})));
-    jsTestLog(tojson(priConn.getDB('admin').runCommand({shardingState: 1})));
-    replTest.dumpOplog(priConn, {}, 30);
-    replTest.stop(priConn);
 
     // Disable the fail point so that the elected node can exit drain mode and finish becoming
     // primary.
@@ -129,24 +123,8 @@
         return priConn.getDB('test').foo.findOne();
     });
 
-    priConn = replTest.restart(0, {noReplSet: true});  // Restart as a standalone node.
-    jsTestLog("Stop 2");
-    jsTestLog(tojson(priConn.getDB('admin').system.version.findOne({_id: 'shardIdentity'})));
-    jsTestLog(tojson(priConn.getDB('admin').runCommand({shardingState: 1})));
-    replTest.dumpOplog(priConn, {}, 30);
-
-    priConn = replTest.restart(priConn, {shardsvr: ''});
-    priConn.setSlaveOk();
-
-    // Wait for the old primary to replicate the document that was written to the new primary while
-    // it was shut down.
-    assert.soonNoExcept(function() {
-        return priConn.getDB('test').foo.findOne();
-    });
-
     // Ensure that there's no sharding state on the restarted original primary, since the
     // shardIdentity doc should have been rolled back.
-    jsTestLog(tojson(priConn.getDB('admin').system.version.findOne({_id: 'shardIdentity'})));
     res = priConn.getDB('admin').runCommand({shardingState: 1});
     assert(!res.enabled, tojson(res));
     assert.eq(null, priConn.getDB('admin').system.version.findOne({_id: 'shardIdentity'}));
