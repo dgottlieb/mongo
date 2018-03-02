@@ -126,14 +126,6 @@ Status RollbackImpl::runRollback(OperationContext* opCtx) {
     // we are guaranteed to have at least one oplog entry after the common point.
     Timestamp truncatePoint = _findTruncateTimestamp(opCtx, commonPointSW.getValue());
 
-    // Persist the truncate point to the 'oplogTruncateAfterPoint' document. We save this value so
-    // that the replication recovery logic knows where to truncate the oplog. Note that it must be
-    // saved *durably* in case a crash occurs after the storage engine recovers to the stable
-    // timestamp. Upon startup after such a crash, the standard replication recovery code will know
-    // where to truncate the oplog by observing the value of the 'oplogTruncateAfterPoint' document.
-    // Note that the storage engine timestamp recovery only restores the database *data* to a stable
-    // timestamp, but does not revert the oplog, which must be done as part of the rollback process.
-    _replicationProcess->getConsistencyMarkers()->setOplogTruncateAfterPoint(opCtx, truncatePoint);
     _listener->onCommonPointFound(commonPointSW.getValue().first.getTimestamp());
 
     // Increment the Rollback ID of this node. The Rollback ID is a natural number that it is
@@ -150,6 +142,15 @@ Status RollbackImpl::runRollback(OperationContext* opCtx) {
         return stableTimesatmpSW.getStatus();
     }
     _listener->onRecoverToStableTimestamp(stableTimesatmpSW.getValue());
+
+    // Persist the truncate point to the 'oplogTruncateAfterPoint' document. We save this value so
+    // that the replication recovery logic knows where to truncate the oplog. Note that it must be
+    // saved *durably* in case a crash occurs after the storage engine recovers to the stable
+    // timestamp. Upon startup after such a crash, the standard replication recovery code will know
+    // where to truncate the oplog by observing the value of the 'oplogTruncateAfterPoint' document.
+    // Note that the storage engine timestamp recovery only restores the database *data* to a stable
+    // timestamp, but does not revert the oplog, which must be done as part of the rollback process.
+    _replicationProcess->getConsistencyMarkers()->setOplogTruncateAfterPoint(opCtx, truncatePoint);
 
     // Reset the reaper state.
     DropPendingCollectionReaper::get(opCtx)->clearDropPendingState();
@@ -168,6 +169,9 @@ Status RollbackImpl::runRollback(OperationContext* opCtx) {
         return status;
     }
     _listener->onRecoverFromOplog();
+
+    _replicationCoordinator->resetLastOpTimesFromOplog(
+        opCtx, ReplicationCoordinator::DataConsistency::Inconsistent);
 
     status = _triggerOpObserver(opCtx);
     if (!status.isOK()) {
