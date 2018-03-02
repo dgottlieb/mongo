@@ -566,11 +566,12 @@ void WiredTigerKVEngine::cleanShutdown() {
                 ServerGlobalParams::FeatureCompatibility::Version::kFullyDowngradedTo36;
 
         if (!needsDowngrade) {
+            closeConfig += "use_timestamp=true,";
             invariantWTOK(_conn->close(_conn, closeConfig.c_str()));
             return;
         }
 
-        closeConfig += ",use_timestamp=false";
+        closeConfig += "use_timestamp=false,";
         invariantWTOK(_conn->close(_conn, closeConfig.c_str()));
         _conn = nullptr;
 
