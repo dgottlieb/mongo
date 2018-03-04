@@ -538,25 +538,13 @@ void MultiIndexBlockImpl::commit() {
     for (size_t i = 0; i < _indexes.size(); i++) {
         _indexes[i].block->success();
 
-        log() << "Bulk? " << bool(_indexes[i].bulk);
         if (_indexes[i].bulk) {
             const auto& bulkBuilder = _indexes[i].bulk;
-            log() << "Multi? " << bulkBuilder->isMultikey();
             if (bulkBuilder->isMultikey()) {
-                // log() << " Paths: " << bulkBuilder->getMultikeyPaths();
                 _indexes[i].block->getEntry()->setMultikey(_opCtx, bulkBuilder->getMultikeyPaths());
             }
         } else {
             for (const auto& info : MultikeyPathTracker::get(_opCtx).getMultikeyPathInfo()) {
-                log() << "Want to set multikey? Name: " << info.indexName
-                      << " IndexName: " << _indexes[i].block->getIndexName() << " Val: ";
-                for (const auto& piece : info.multikeyPaths) {
-                    log() << "\tPiece:";
-                    for (const auto& item : piece) {
-                        log() << "\t\tItem: " << item;
-                    }
-                }
-
                 if (info.indexName == _indexes[i].block->getIndexName()) {
                     _indexes[i].block->getEntry()->setMultikey(_opCtx, info.multikeyPaths);
                 }

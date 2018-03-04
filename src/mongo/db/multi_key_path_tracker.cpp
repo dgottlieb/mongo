@@ -40,11 +40,9 @@ const OperationContext::Decoration<MultikeyPathTracker> MultikeyPathTracker::get
     OperationContext::declareDecoration<MultikeyPathTracker>();
 
 void MultikeyPathTracker::addMultikeyPathInfo(MultikeyPathInfo info) {
-    log() << "Adding multikey. Name: " << info.indexName << " This: " << (void*)this;
     bool found = false;
     for (auto& existingChanges : _multikeyPathInfo) {
         if (existingChanges.nss != info.nss || existingChanges.indexName != info.indexName) {
-            // log() << "Continuing.";
             continue;
         }
 
@@ -60,22 +58,18 @@ void MultikeyPathTracker::addMultikeyPathInfo(MultikeyPathInfo info) {
 }
 
 const WorkerMultikeyPathInfo& MultikeyPathTracker::getMultikeyPathInfo() const {
-    log() << "Getting multikey path info. This: " << (void*)this;
     return _multikeyPathInfo;
 }
 
 void MultikeyPathTracker::startTrackingMultikeyPathInfo() {
-    log() << "Starting tracking. This: " << (void*)this;
     _trackMultikeyPathInfo = true;
 }
 
 void MultikeyPathTracker::stopTrackingMultikeyPathInfo() {
-    log() << "Stopping tracking. This: " << (void*)this;
     _trackMultikeyPathInfo = false;
 }
 
 bool MultikeyPathTracker::isTrackingMultikeyPathInfo() const {
-    log() << "Is tracking? " << _trackMultikeyPathInfo << " This: " << (void*)this;
     return _trackMultikeyPathInfo;
 }
 
