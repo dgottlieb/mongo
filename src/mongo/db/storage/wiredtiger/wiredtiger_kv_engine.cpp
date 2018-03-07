@@ -93,6 +93,9 @@ namespace mongo {
 using std::set;
 using std::string;
 
+static Timestamp lastTimestampDictated;
+static Timestamp lastTimestampClawed;
+
 namespace dps = ::mongo::dotted_path_support;
 
 const int WiredTigerKVEngine::kDefaultJournalDelayMillis = 100;
@@ -204,8 +207,6 @@ public:
                                << stableTimestamp.toString()
                                << " InitialDataTimestamp: " << initialDataTimestamp.toString();
                     } else {
-                        log() << "Performing stable checkpoint. Initial data timestamp: "
-                              << initialDataTimestamp << " StableTimestamp: " << stableTimestamp;
                         auto opCtxRaii = cc().makeOperationContext();
                         Lock::GlobalLock lk(
                             opCtxRaii.get(), LockMode::MODE_IS, Date_t::now() + Milliseconds(100));
@@ -213,6 +214,9 @@ public:
                             log() << "Cannot acquire the global lock. Continuing";
                             continue;
                         }
+
+                        log() << "Performing stable checkpoint. Initial data timestamp: "
+                              << initialDataTimestamp << " StableTimestamp: " << stableTimestamp;
 
                         /*
                         auto replProcess = repl::ReplicationProcess::get(opCtxRaii.get());
@@ -567,6 +571,15 @@ void WiredTigerKVEngine::cleanShutdown() {
 
         if (!needsDowngrade) {
             closeConfig += "use_timestamp=true,";
+            log() << "LastDictated: " << lastTimestampDictated
+                  << " LastClawed: " << lastTimestampClawed;
+            if (!lastTimestampDictated.isNull() && !lastTimestampClawed.isNull()) {
+                invariant(lastTimestampDictated == lastTimestampClawed,
+                          str::stream() << "Shutting down with clawed back timestamp. Dictated: "
+                                        << lastTimestampDictated.toString()
+                                        << " Clawed: "
+                                        << lastTimestampClawed.toString());
+            }
             invariantWTOK(_conn->close(_conn, closeConfig.c_str()));
             return;
         }
@@ -1107,13 +1120,18 @@ void WiredTigerKVEngine::setStableTimestamp(Timestamp stableTimestamp) {
         return;
     }
 
+    const Timestamp origTimestamp = stableTimestamp;
     const auto oplogReadTimestamp = Timestamp(_oplogManager->getOplogReadTimestamp());
     if (!oplogReadTimestamp.isNull() && stableTimestamp > oplogReadTimestamp) {
         // When a replica set has one voting node, replication can advance the commit point ahead
         // of the current oplog read visibility. Allowing that to happen in storage can result in
         // logically previous transactions trying to commit behind this updated stable
         // timestamp. Instead, pin the stable timestamp to the oplog read timestamp.
+        log() << "Clawing back stable timestamp. Original: " << stableTimestamp
+              << " OplogReadTimestamp: " << oplogReadTimestamp;
         stableTimestamp = oplogReadTimestamp;
+    } else {
+        log() << "Not clawing back. Stable: " << stableTimestamp;
     }
 
     if (_checkpointThread && stableTimestamp.asULL() <= _checkpointThread->getStableTimestamp()) {
@@ -1136,6 +1154,9 @@ void WiredTigerKVEngine::setStableTimestamp(Timestamp stableTimestamp) {
     // taking "stable checkpoints". In the transitioning case, it's imperative for the "stable
     // timestamp" to have first been communicated to WiredTiger.
     if (!keepOldBehavior) {
+        lastTimestampDictated = origTimestamp;
+        lastTimestampClawed = stableTimestamp;
+
         char stableTSConfigString["stable_timestamp="_sd.size() +
                                   (8 * 2) /* 16 hexadecimal digits */ + 1 /* trailing null */];
         auto size = std::snprintf(stableTSConfigString,

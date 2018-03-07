@@ -3118,7 +3118,7 @@ void ReplicationCoordinatorImpl::_setStableTimestampForStorage_inlock() {
     // If there is a valid stable optime, set it for the storage engine, and then remove any
     // old, unneeded stable optime candidates.
     if (stableOpTime) {
-        LOG(2) << "Setting replication's stable optime to " << stableOpTime.value();
+        LOG(0) << "Setting replication's stable optime to " << stableOpTime.value();
 
         if (!testingSnapshotBehaviorInIsolation) {
             // Update committed snapshot and wake up any threads waiting on read concern or

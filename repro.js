@@ -1,3 +1,4 @@
+TestData.skipCollectionAndIndexValidation = true;
 TestData.skipCheckDBHashes = true;
 var rst = new ReplSetTest({nodes: 2});
 rst.startSet();
@@ -6,13 +7,14 @@ rst.initiate();
 let shell = startParallelShell(function() {
     db = db.getSiblingDB('test');
     db.bla.ensureIndex({x: 1});
-    let i = 0
 
-        while (true) {
+    let doc = 'L'.repeat(50);
+
+    while (true) {
         try {
             var bulk = db.bla.initializeUnorderedBulkOp();
             for (var num = 0; num < 1000; ++num) {
-                bulk.insert({x: i++});
+                bulk.insert({doc: doc, x: Math.floor(Math.random() * 1000000)});
             };
             bulk.execute();
         } catch (e) {
@@ -65,23 +67,30 @@ var diffLogs0 = [];
 diff0.forEach(function(d) {
     let entry = node1.getCollection('local.oplog.rs').findOne({'o._id': d});
     diffLogs0.push(entry);
-    jsTestLog(tojson(
-        node1.getCollection('local.oplog.rs').find({ts: {$gte: entry.ts}}).limit(10).toArray()))
+    /*
+        jsTestLog(tojson(
+            node1.getCollection('local.oplog.rs').find({ts: {$gte: entry.ts}}).limit(10).toArray()))
+    */
 });
 jsTestLog(tojson(diffLogs0));
 var diffLogs1 = [];
 diff1.forEach(function(d) {
     let entry = node1.getCollection('local.oplog.rs').findOne({'o._id': d});
     diffLogs1.push(entry);
+    /*
     jsTestLog(tojson(
         node1.getCollection('local.oplog.rs').find({ts: {$gte: entry.ts}}).limit(10).toArray()))
+*/
 });
 jsTestLog(tojson(diffLogs1));
 
 let val = coll.validate({full: true});
-jsTestLog(tojson(val));
-jsTestLog(tojson(node1.getDB('local').replset.minvalid.findOne()));
-rst.dumpOplog(node1, {}, 30);
+jsTestLog(tojson({
+    validate: val,
+    minValid: node1.getDB('local').replset.minvalid.findOne(),
+    SUCCESS: val["valid"]
+}));
+// rst.dumpOplog(node1, {}, 30);
 
 shell({checkExitSuccess: false});
 

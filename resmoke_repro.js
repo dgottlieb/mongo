@@ -6,13 +6,14 @@ rst.initiate();
 let shell = startParallelShell(function() {
     db = db.getSiblingDB('test');
     db.bla.ensureIndex({x: 1});
-    let i = 0;
+
+    var doc = 'L'.repeat(50);
 
     while (true) {
         try {
             var bulk = db.bla.initializeUnorderedBulkOp();
             for (var num = 0; num < 1000; ++num) {
-                bulk.insert({x: i++});
+                bulk.insert({doc: doc, x: Math.floor(Math.random() * 1000000)});
             };
             bulk.execute();
         } catch (e) {
