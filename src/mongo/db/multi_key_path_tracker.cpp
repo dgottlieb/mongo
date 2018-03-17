@@ -26,9 +26,13 @@
  *    it in the license file.
  */
 
+#define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kIndex
+
 #include "mongo/platform/basic.h"
 
 #include "mongo/db/multi_key_path_tracker.h"
+
+#include "mongo/util/log.h"
 
 namespace mongo {
 

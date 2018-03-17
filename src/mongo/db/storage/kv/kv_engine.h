@@ -271,7 +271,7 @@ public:
     /**
      * See `StorageEngine::recoverToStableTimestamp`
      */
-    virtual StatusWith<Timestamp> recoverToStableTimestamp() {
+    virtual StatusWith<Timestamp> recoverToStableTimestamp(OperationContext* opCtx) {
         fassertFailed(50664);
     }
 
@@ -279,6 +279,13 @@ public:
      * See `StorageEngine::getRecoveryTimestamp`
      */
     virtual boost::optional<Timestamp> getRecoveryTimestamp() const {
+        MONGO_UNREACHABLE;
+    }
+
+    /**
+     * See `StorageEngine::getAllCommittedTimestamp`
+     */
+    virtual Timestamp getAllCommittedTimestamp(OperationContext* opCtx) const {
         MONGO_UNREACHABLE;
     }
 

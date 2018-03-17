@@ -45,6 +45,8 @@
 #include "mongo/util/log.h"
 #include "mongo/util/mongoutils/str.h"
 
+#include "mongo/util/stacktrace.h"
+
 namespace mongo {
 
 void WiredTigerSnapshotManager::setCommittedSnapshot(const Timestamp& timestamp) {
@@ -68,6 +70,8 @@ Status WiredTigerSnapshotManager::beginTransactionAtTimestamp(Timestamp pointInT
                                                               WT_SESSION* session) const {
     char readTSConfigString[15 /* read_timestamp= */ + (8 * 2) /* 8 hexadecimal characters */ +
                             1 /* trailing null */];
+    // log() << "Opening read transaction. TS: " << pointInTime;
+    // printStackTrace();
     auto size = std::snprintf(
         readTSConfigString, sizeof(readTSConfigString), "read_timestamp=%llx", pointInTime.asULL());
     if (size < 0) {

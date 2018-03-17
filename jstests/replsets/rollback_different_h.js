@@ -7,6 +7,9 @@
 // run on ephemeral storage engines.
 // @tags: [requires_persistence]
 
+// SERVER-29213: Turn on with ReplSetTest initiate/reconfig fix.
+// @tags: [requires_mmapv1]
+
 // function to check the logs for an entry
 doesEntryMatch = function(array, regex) {
     var found = false;

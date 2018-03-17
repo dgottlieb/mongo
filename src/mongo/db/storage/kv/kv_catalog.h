@@ -97,6 +97,8 @@ public:
         return _featureTracker.get();
     }
 
+    RecordStore* _rs;  // not owned
+
 private:
     class AddIdentChange;
     class RemoveIdentChange;
@@ -114,7 +116,6 @@ private:
     static std::string _newRand();
     bool _hasEntryCollidingWithRand() const;
 
-    RecordStore* _rs;  // not owned
     const bool _directoryPerDb;
     const bool _directoryForIndexes;
 

@@ -75,6 +75,8 @@ public:
 
     Status obtainMajorityCommittedSnapshot() override;
 
+    void mustBeTimestamped(OperationContext* opCtx, NamespaceString nss);
+
     boost::optional<Timestamp> getPointInTimeReadTimestamp() const override;
 
     SnapshotId getSnapshotId() const override;
@@ -163,6 +165,8 @@ private:
     bool _isOplogReader = false;
     typedef std::vector<std::unique_ptr<Change>> Changes;
     Changes _changes;
+    bool _mustBeTimestamped = false;
+    bool _mustNotBeTimestamped = false;
 };
 
 /**

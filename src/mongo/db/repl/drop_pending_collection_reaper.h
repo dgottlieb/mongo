@@ -98,6 +98,10 @@ public:
      */
     void dropCollectionsOlderThan(OperationContext* opCtx, const OpTime& opTime);
 
+    void clearDropPendingState() {
+        _dropPendingNamespaces.clear();
+    }
+
     /**
      * Renames the drop-pending namespace at the specified optime back to the provided name.
      * There can only be one matching collection per database and at most two entries per optime

@@ -142,6 +142,10 @@ public:
      */
     virtual MemberState getMemberState() const = 0;
 
+    virtual MemberState _getMemberState_inlock() const {
+        return {};
+    }
+
     /**
      * Waits for 'timeout' ms for member state to become 'state'.
      * Returns OK if member state is 'state'.

@@ -336,7 +336,9 @@ StatusWith<BSONObj> IndexCatalogImpl::prepareSpecForCreate(OperationContext* opC
 StatusWith<BSONObj> IndexCatalogImpl::createIndexOnEmptyCollection(OperationContext* opCtx,
                                                                    BSONObj spec) {
     invariant(opCtx->lockState()->isCollectionLockedForMode(_collection->ns().toString(), MODE_X));
-    invariant(_collection->numRecords(opCtx) == 0);
+    invariant(_collection->numRecords(opCtx) == 0,
+              str::stream() << "Collection must be empty. Count: "
+                            << _collection->numRecords(opCtx));
 
     _checkMagic();
     Status status = checkUnfinished();
@@ -418,6 +420,8 @@ Status IndexCatalogImpl::IndexBuildBlock::init() {
     if (!status.isOK())
         return status;
 
+    _opCtx->recoveryUnit()->mustBeTimestamped(_opCtx, _catalog->_getCollection()->ns());
+
     auto* const descriptorPtr = descriptor.get();
     /// ----------   setup in memory structures  ----------------
     const bool initFromDisk = false;
@@ -441,6 +445,8 @@ void IndexCatalogImpl::IndexBuildBlock::fail() {
     invariant(_opCtx->lockState()->inAWriteUnitOfWork());
     fassert(17204, _catalog->_getCollection()->ok());  // defensive
 
+    _opCtx->recoveryUnit()->mustBeTimestamped(_opCtx, _catalog->_getCollection()->ns());
+
     IndexCatalogEntry* entry = IndexCatalog::_getEntries(_catalog).find(_indexName);
     invariant(entry == _entry);
 
@@ -456,6 +462,8 @@ void IndexCatalogImpl::IndexBuildBlock::success() {
     invariant(_opCtx->lockState()->inAWriteUnitOfWork());
 
     Collection* collection = _catalog->_getCollection();
+    _opCtx->recoveryUnit()->mustBeTimestamped(_opCtx, collection->ns());
+
     fassert(17207, collection->ok());
     NamespaceString ns(_indexNamespace);
     invariant(_opCtx->lockState()->isDbLockedForMode(ns.db(), MODE_X));

@@ -2,10 +2,13 @@
  * Tests that temporary collections are not dropped when a member of a replica set is started up as
  * a stand-alone mongod, i.e. without the --replSet parameter.
  *
- * @tags: [requires_persistence]
+ * This test restarts a node as a standalone. With RTT, standalones start up at a time in the past
+ * since they do not perform replication recovery, so we must only run it with mmapv1.
+ * @tags: [requires_persistence, requires_mmapv1]
  */
 (function() {
-    var rst = new ReplSetTest({nodes: 2});
+    const numNodes = 2;
+    var rst = new ReplSetTest({nodes: numNodes});
     rst.startSet();
 
     // Rig the election so that the first node becomes the primary and remains primary despite the
@@ -50,6 +53,12 @@
               secondaryCollectionInfos[0].options.temp,
               "'temp_collection' wasn't created as temporary on the secondary: " +
                   tojson(secondaryCollectionInfos[0].options));
+
+    printjson({
+        "oplogEntry":
+            secondaryConn.getDB("local").oplog.rs.find().sort({$natural: -1}).limit(1).next(),
+        "replSetGetStatus": secondaryConn.adminCommand("replSetGetStatus")
+    });
 
     // Shut down the secondary and restart it as a stand-alone mongod.
     var secondaryNodeId = rst.getNodeId(secondaryDB.getMongo());

@@ -78,14 +78,20 @@ public:
     void waitForAllEarlierOplogWritesToBeVisible(const WiredTigerRecordStore* oplogRecordStore,
                                                  OperationContext* opCtx) const;
 
+    // Returns the all committed timestamp. All transactions with timestamps earlier than the
+    // all committed timestamp are committed.
+    uint64_t fetchAllCommittedValue(OperationContext* opCtx);
+
 private:
     void _oplogJournalThreadLoop(WiredTigerSessionCache* sessionCache,
                                  WiredTigerRecordStore* oplogRecordStore) noexcept;
 
     void _setOplogReadTimestamp(WithLock, uint64_t newTimestamp);
 
+public:
     uint64_t _fetchAllCommittedValue(WT_CONNECTION* conn);
 
+private:
     stdx::thread _oplogJournalThread;
     mutable stdx::mutex _oplogVisibilityStateMutex;
     mutable stdx::condition_variable

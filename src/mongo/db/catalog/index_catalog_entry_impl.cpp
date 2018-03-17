@@ -258,11 +258,13 @@ void IndexCatalogEntryImpl::setMultikey(OperationContext* opCtx,
     // current clock time. Once a background index is committed, if a future write makes
     // it multikey, that write will be marked as "isTrackingMultikeyPathInfo" on the applier's
     // OperationContext and we can safely defer that write to the end of the batch.
+    log() << "Want to set multikey.";
     if (MultikeyPathTracker::get(opCtx).isTrackingMultikeyPathInfo()) {
         MultikeyPathInfo info;
         info.nss = _collection->ns();
         info.indexName = _descriptor->indexName();
         info.multikeyPaths = paths;
+        log() << "Setting path for. Ns: " << info.nss << " Name:  " << info.indexName;
         MultikeyPathTracker::get(opCtx).addMultikeyPathInfo(info);
         return;
     }

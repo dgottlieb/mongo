@@ -330,7 +330,7 @@ public:
      * It is illegal to call this concurrently with `setStableTimestamp` or
      * `setInitialDataTimestamp`.
      */
-    virtual StatusWith<Timestamp> recoverToStableTimestamp() {
+    virtual StatusWith<Timestamp> recoverToStableTimestamp(OperationContext* opCtx) {
         fassertFailed(40547);
     }
 
@@ -381,6 +381,14 @@ public:
         OperationContext* opCtx) {
         return std::vector<CollectionIndexNamePair>();
     };
+
+    /**
+     * Returns the all committed timestamp. All transactions with timestamps earlier than the
+     * all committed timestamp are committed.
+     */
+    virtual Timestamp getAllCommittedTimestamp(OperationContext* opCtx) const {
+        MONGO_UNREACHABLE;
+    }
 
 protected:
     /**

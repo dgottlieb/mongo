@@ -50,6 +50,30 @@ namespace mongo {
 
 using std::string;
 
+StatusWith<std::string> getMetadataRaw(WT_SESSION* session, StringData uri) {
+    WT_CURSOR* cursor;
+    invariantWTOK(session->open_cursor(session, "metadata:create", nullptr, "", &cursor));
+    invariant(cursor);
+    ON_BLOCK_EXIT([cursor] { invariantWTOK(cursor->close(cursor)); });
+
+    std::string strUri = uri.toString();
+    cursor->set_key(cursor, strUri.c_str());
+    int ret = cursor->search(cursor);
+    if (ret == WT_NOTFOUND) {
+        return StatusWith<std::string>(ErrorCodes::NoSuchKey,
+                                       str::stream() << "Unable to find metadata for " << uri);
+    } else if (ret != 0) {
+        return StatusWith<std::string>(wtRCToStatus(ret));
+    }
+    const char* metadata = NULL;
+    ret = cursor->get_value(cursor, &metadata);
+    if (ret != 0) {
+        return StatusWith<std::string>(wtRCToStatus(ret));
+    }
+    invariant(metadata);
+    return StatusWith<std::string>(metadata);
+}
+
 Status wtRCToStatus_slow(int retCode, const char* prefix) {
     if (retCode == 0)
         return Status::OK();
@@ -459,32 +483,41 @@ bool WiredTigerUtil::useTableLogging(NamespaceString ns, bool replEnabled) {
 }
 
 Status WiredTigerUtil::setTableLogging(OperationContext* opCtx, const std::string& uri, bool on) {
-    WiredTigerRecoveryUnit* recoveryUnit = WiredTigerRecoveryUnit::get(opCtx);
-    return setTableLogging(recoveryUnit->getSession()->getSession(), uri, on);
+    // Try to close as much as possible to avoid EBUSY errors.
+    WiredTigerRecoveryUnit::get(opCtx)->getSession()->closeAllCursors(uri);
+    WiredTigerSessionCache* sessionCache = WiredTigerRecoveryUnit::get(opCtx)->getSessionCache();
+    sessionCache->closeAllCursors(uri);
+
+    // Use a dedicated session for alter operations to avoid transaction issues.
+    WiredTigerSession session(sessionCache->conn());
+    return setTableLogging(session.getSession(), uri, on);
 }
 
 Status WiredTigerUtil::setTableLogging(WT_SESSION* session, const std::string& uri, bool on) {
-    const bool keepOldBehavior = true;
+    const bool keepOldBehavior = false;
     if (keepOldBehavior) {
         return Status::OK();
     }
 
-    LOG(3) << "Changing logging values. Uri: " << uri << " Enabled? " << on;
-    int ret;
+    LOG(0) << "Changing logging values. Uri: " << uri << " Enabled? " << on;
+    std::string setting;
     if (on) {
-        ret = session->alter(session, uri.c_str(), "log=(enabled=true)");
+        setting = "log=(enabled=true)";
     } else {
-        ret = session->alter(session, uri.c_str(), "log=(enabled=false)");
+        setting = "log=(enabled=false)";
     }
+    int ret = session->alter(session, uri.c_str(), setting.c_str());
 
     if (ret) {
-        return Status(ErrorCodes::WriteConflict,
-                      str::stream() << "Failed to update log setting. Uri: " << uri << " Enable? "
-                                    << on
-                                    << " Ret: "
-                                    << ret
-                                    << " Msg: "
-                                    << session->strerror(session, ret));
+        std::string existingMetadata = getMetadataRaw(session, uri).getValue();
+        invariant(existingMetadata.find(setting) != std::string::npos,
+                  str::stream() << "Failed to update log setting. Uri: " << uri << " Enable? " << on
+                                << " Ret: "
+                                << ret
+                                << " MD: "
+                                << existingMetadata
+                                << " Msg: "
+                                << session->strerror(session, ret));
     }
 
     return Status::OK();

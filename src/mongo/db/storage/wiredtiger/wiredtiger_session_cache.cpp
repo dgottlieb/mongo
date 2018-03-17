@@ -235,7 +235,7 @@ void WiredTigerSessionCache::waitUntilDurable(bool forceCheckpoint, bool stableC
         {
             stdx::unique_lock<stdx::mutex> lk(_journalListenerMutex);
             JournalListener::Token token = _journalListener->getToken();
-            const bool keepOldBehavior = true;
+            const bool keepOldBehavior = false;
             if (keepOldBehavior) {
                 invariantWTOK(s->checkpoint(s, nullptr));
             } else {

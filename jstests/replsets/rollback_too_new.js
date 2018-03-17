@@ -59,6 +59,7 @@
     // immediately.
     replTest.start(CID, {waitForConnect: false}, true /*restart*/);
 
+    print("Start");
     assert.soon(function() {
         try {
             return rawMongoProgramOutput().match(

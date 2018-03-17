@@ -31,6 +31,7 @@
 
 #include "mongo/db/repl/replication_recovery.h"
 
+#include "mongo/db/catalog/document_validation.h"
 #include "mongo/db/db_raii.h"
 #include "mongo/db/dbdirectclient.h"
 #include "mongo/db/namespace_string.h"
@@ -158,12 +159,17 @@ void ReplicationRecoveryImpl::_applyToEndOfOplog(OperationContext* opCtx,
           << " (exclusive) to " << topOfOplog.toBSON() << " (inclusive).";
 
     DBDirectClient db(opCtx);
-    auto cursor = db.query(NamespaceString::kRsOplogNamespace.ns(),
-                           QUERY("ts" << BSON("$gte" << oplogApplicationStartPoint)),
-                           /*batchSize*/ 0,
-                           /*skip*/ 0,
-                           /*projection*/ nullptr,
-                           QueryOption_OplogReplay);
+    std::unique_ptr<DBClientCursor> cursor;
+    {
+        // WriteUnitOfWork wuow(opCtx);
+        // invariantOK(opCtx->recoveryUnit()->setTimestamp(topOfOplog));
+        cursor = db.query(NamespaceString::kRsOplogNamespace.ns(),
+                          QUERY("ts" << BSON("$gte" << oplogApplicationStartPoint)),
+                          /*batchSize*/ 0,
+                          /*skip*/ 0,
+                          /*projection*/ nullptr,
+                          QueryOption_OplogReplay);
+    }
 
     // Check that the first document matches our appliedThrough point then skip it since it's
     // already been applied.
@@ -186,10 +192,12 @@ void ReplicationRecoveryImpl::_applyToEndOfOplog(OperationContext* opCtx,
 
     // Apply remaining ops one at at time, but don't log them because they are already logged.
     UnreplicatedWritesBlock uwb(opCtx);
+    DisableDocumentValidation validationDisabler(opCtx);
 
     BSONObj entry;
     while (cursor->more()) {
         entry = cursor->nextSafe();
+        log() << "Applying op during recovery: " << redact(entry);
         fassert(40294, SyncTail::syncApply(opCtx, entry, OplogApplication::Mode::kRecovering));
     }
 
@@ -260,6 +268,7 @@ void ReplicationRecoveryImpl::_truncateOplogTo(OperationContext* opCtx,
             if (count != 1) {
                 invariant(!oldestIDToDelete.isNull());
                 oplogCollection->cappedTruncateAfter(opCtx, oldestIDToDelete, /*inclusive=*/true);
+                opCtx->recoveryUnit()->waitUntilDurable();
             }
             return;
         }

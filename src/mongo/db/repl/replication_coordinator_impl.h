@@ -710,9 +710,10 @@ private:
                             const HostAndPort& target,
                             int targetIndex);
 
+public:
+    MemberState _getMemberState_inlock() const override;
 
-    MemberState _getMemberState_inlock() const;
-
+private:
     /**
      * Starts loading the replication configuration from local storage, and if it is valid,
      * schedules a callback (of _finishLoadLocalConfig) to set it as the current replica set

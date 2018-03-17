@@ -589,7 +589,7 @@ StatusWith<std::string> WiredTigerRecordStore::generateCreateString(
     }
     ss << ")";
 
-    const bool keepOldLoggingSettings = true;
+    const bool keepOldLoggingSettings = false;
     if (keepOldLoggingSettings ||
         WiredTigerUtil::useTableLogging(NamespaceString(ns),
                                         getGlobalReplSettings().usingReplSets())) {
@@ -630,6 +630,8 @@ WiredTigerRecordStore::WiredTigerRecordStore(WiredTigerKVEngine* kvEngine,
         if (versionStatus.code() == ErrorCodes::FailedToParse) {
             uasserted(28548, versionStatus.reason());
         } else {
+            throw 12;
+            invariant(false);
             fassertFailedNoTrace(34433);
         }
     }

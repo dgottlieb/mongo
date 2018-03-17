@@ -326,7 +326,8 @@ StatusWith<std::vector<BSONObj>> MultiIndexBlockImpl::init(const std::vector<BSO
     wunit.commit();
 
     if (MONGO_FAIL_POINT(crashAfterStartingIndexBuild)) {
-        log() << "Index build interrupted due to 'crashAfterStartingIndexBuild' failpoint. Exiting "
+        log() << "Index build interrupted due to 'crashAfterStartingIndexBuild' failpoint. "
+                 "Exiting "
                  "after waiting for changes to become durable.";
         Locker::LockSnapshot lockInfo;
         _opCtx->lockState()->saveLockStateAndUnlock(&lockInfo);
