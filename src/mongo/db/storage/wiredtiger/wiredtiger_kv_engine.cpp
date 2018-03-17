@@ -1139,7 +1139,7 @@ void WiredTigerKVEngine::_setOldestTimestamp(Timestamp oldestTimestamp, bool for
     }
 
     const auto oplogVisibility = Timestamp(_oplogManager->getOplogReadTimestamp());
-    if (oldestTimestamp > oplogVisibility) {
+    if (!oplogVisibility.isNull() && oldestTimestamp > oplogVisibility) {
         oldestTimestamp = oplogVisibility;
     }
 
